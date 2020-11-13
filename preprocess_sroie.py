@@ -337,7 +337,16 @@ def convert_sroie_to_funsd(data_dir, output_dir, visualize):
     return annotations
 
 
-def convert(annotations, output_dir, data_split):
+def convert(annotations, output_dir, data_split, so_only):
+    if so_only:
+        b_tag = 'S-'
+        i_tag = 'S-'
+        e_tag = 'S-'
+    else:
+        b_tag = 'B-'
+        i_tag = 'I-'
+        e_tag = 'E-'
+    
     with open(
         os.path.join(output_dir, data_split + ".txt.tmp"),
         "w",
@@ -395,7 +404,7 @@ def convert(annotations, output_dir, data_split):
                             + "\n"
                         )
                     else:
-                        fw.write(words[0]["text"] + "\tS-" + label.upper() + "\n")
+                        fw.write(words[0]["text"] + "\t" + b_tag + label.upper() + "\n")
                         fbw.write(
                             words[0]["text"]
                             + "\t"
@@ -411,7 +420,7 @@ def convert(annotations, output_dir, data_split):
                             + "\n"
                         )
                         for w in words[1:-1]:
-                            fw.write(w["text"] + "\tS-" + label.upper() + "\n")
+                            fw.write(w["text"] + "\t" + i_tag + label.upper() + "\n")
                             fbw.write(
                                 w["text"]
                                 + "\t"
@@ -426,7 +435,7 @@ def convert(annotations, output_dir, data_split):
                                 + file_name
                                 + "\n"
                             )
-                        fw.write(words[-1]["text"] + "\tS-" + label.upper() + "\n")
+                        fw.write(words[-1]["text"] + "\t" + e_tag + label.upper() + "\n")
                         fbw.write(
                             words[-1]["text"]
                             + "\t"
@@ -518,11 +527,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data_dir", type=str, default=r"D:\Experiments\layout-lm\SROIE2019"
     )
-    parser.add_argument("--output_dir", type=str, default="sroie_with_SO")
+    parser.add_argument("--output_dir", type=str, default="sroie_multiline_SO_with_val")
     parser.add_argument("--model_name_or_path", type=str, default="bert-base-uncased")
     parser.add_argument("--max_len", type=int, default=510)
     parser.add_argument("--seed", type=int, default=17)
-    parser.add_argument("--train_size", type=float, default=1.0)
+    parser.add_argument("--train_size", type=float, default=0.8)
+    parser.add_argument("--so_only", type=bool, default=True)
     args = parser.parse_args()
     
     from pathlib import Path
@@ -533,15 +543,15 @@ if __name__ == "__main__":
     annotations = convert_sroie_to_funsd(args.data_dir, args.output_dir,
                                          visualize=False)
     key_list = list(annotations.keys())
-    random.shuffle(key_list)
     random.seed(args.seed)
-    split_point = int(args.train_size * len(key_list))
+    random.shuffle(key_list)
+    split_point = round(args.train_size * len(key_list))
     
     convert({
                 k: v for k, v in annotations.items() 
                 if k in key_list[:split_point]
             }, 
-            args.output_dir, 'train')
+            args.output_dir, 'train', args.so_only)
     seg(args.model_name_or_path, args.output_dir, 'train', args.max_len)
     
     if args.train_size < 1:
@@ -549,5 +559,5 @@ if __name__ == "__main__":
                     k: v for k, v in annotations.items() 
                     if k in key_list[split_point:]
                 }, 
-                args.output_dir, 'val')
+                args.output_dir, 'val', args.so_only)
         seg(args.model_name_or_path, args.output_dir, 'val', args.max_len)

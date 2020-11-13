@@ -4,7 +4,6 @@ import json
 import time
 import logging
 import datetime
-from collections import namedtuple
 from pathlib import Path
 
 import numpy as np
@@ -31,7 +30,8 @@ from seqeval.metrics import (
     recall_score,
 )
 
-from funsd import FunsdDataset
+from datasets import DatasetForTokenClassification
+from utils import *
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +42,9 @@ def get_labels(path):
         labels = ["O"] + labels
     return labels
 
-def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix="",
-             verbose=True):
-    eval_dataset = FunsdDataset(args, tokenizer, labels, pad_token_label_id, mode=mode)
+def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, 
+             smoothened=False, prefix="", verbose=True):
+    eval_dataset = DatasetForTokenClassification(args, tokenizer, labels, pad_token_label_id, mode=mode)
     
     eval_sampler = SequentialSampler(eval_dataset)
     eval_dataloader = DataLoader(
@@ -81,17 +81,21 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
         
         nb_eval_steps += 1
         
+        p = logits.detach().cpu().numpy()
+        l = inputs['labels'].detach().cpu().numpy()
+        
+        
         if preds is None:
-            preds = logits.detach().cpu().numpy()
-            out_label_ids = inputs["labels"].detach().cpu().numpy()
+            preds = p
+            out_label_ids = l
         else:
-            preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-            out_label_ids = np.append(
-                out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0
-            )
+            preds = np.append(preds, p, axis=0)
+            out_label_ids = np.append(out_label_ids, l, axis=0)
     
     eval_loss = eval_loss / nb_eval_steps
     preds = np.argmax(preds, axis=2)
+    if smoothened:
+        preds = [smoothen(p) for p in preds]
     
     label_map = {i: label for i, label in enumerate(labels)}
     
@@ -111,6 +115,18 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
         "f1": f1_score(out_label_list, preds_list),
     }
     
+    if args.so_only:
+        for i, p in enumerate(preds_list):
+            preds_list[i] = convert_SO_to_BIOES(p)
+        for i, l in enumerate(out_label_list):
+            out_label_list[i] = convert_SO_to_BIOES(l)
+        BIOES_results = {
+            "BIOES_precision": precision_score(out_label_list, preds_list),
+            "BIOES_recall": recall_score(out_label_list, preds_list),
+            "BIOES_f1": f1_score(out_label_list, preds_list),
+        }
+        results.update(BIOES_results)
+    
     if verbose:
         report = classification_report(out_label_list, preds_list)
         logger.info("\n" + report)
@@ -118,7 +134,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
         logger.info("***** Eval results %s *****", prefix)
         for key in sorted(results.keys()):
             logger.info("  %s = %s", key, str(results[key]))
-    
+        
     return results, preds_list
 
 
@@ -296,20 +312,20 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
             train_iterator.close()
             break
     
-    print('saving final model')
-    # Save model checkpoint
-    output_dir = os.path.join(
-        args.output_dir, 
-        'ep-{}-train_loss-{:.2f}-train_f1-{:.2f}'.format(i, 
-                                                         train_results['loss'], 
-                                                         train_results['f1'])
-    )
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    model.save_pretrained(output_dir)
-    tokenizer.save_pretrained(output_dir)
-    torch.save(args, os.path.join(output_dir, "training_args.bin"))
-    logger.info("Saving model checkpoint to %s", output_dir)
+    # print('saving final model')
+    # # Save model checkpoint
+    # output_dir = os.path.join(
+    #     args.output_dir, 
+    #     'ep-{}-train_loss-{:.2f}-train_f1-{:.2f}'.format(i, 
+    #                                                      train_results['loss'], 
+    #                                                      train_results['f1'])
+    # )
+    # if not os.path.exists(output_dir):
+    #     os.makedirs(output_dir)
+    # model.save_pretrained(output_dir)
+    # tokenizer.save_pretrained(output_dir)
+    # torch.save(args, os.path.join(output_dir, "training_args.bin"))
+    # logger.info("Saving model checkpoint to %s", output_dir)
     
     summary_writer.close()
     
@@ -317,14 +333,14 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
 
 
 args = dict(
-    data_dir='sroie_with_val_SO_fixed', 
+    data_dir='sroie_multiline_SO_with_val', 
     max_seq_length=512, 
     model_name_or_path='microsoft/layoutlm-base-uncased', 
     model_type='layoutlm', 
-    num_train_epochs=100, 
+    num_train_epochs=1, 
     learning_rate=5e-5,
     weight_decay=0.0,
-    output_dir='test_sroie_SO_2', 
+    output_dir='sroie_multiline_SO_1', 
     overwrite_cache=False, 
     train_batch_size=1,
     eval_batch_size=16,
@@ -340,7 +356,8 @@ args = dict(
     use_val=True,
     load_pretrain=True,
     freeze_lm=False,
-    att_on_cls=False
+    att_on_cls=False,
+    so_only=True
 )
 class Args:
     def __init__(self, args):
@@ -394,7 +411,7 @@ logger.info("Training/evaluation parameters %s", args.__dict__)
 
 logger.info('Training...')
 
-train_dataset = FunsdDataset(args, tokenizer, labels, pad_token_label_id, mode="train")
+train_dataset = DatasetForTokenClassification(args, tokenizer, labels, pad_token_label_id, mode="train")
 
 global_step, tr_loss = train(args, train_dataset, model, tokenizer, labels, pad_token_label_id)
 
@@ -402,7 +419,7 @@ global_step, tr_loss = train(args, train_dataset, model, tokenizer, labels, pad_
 if not os.path.exists(args.output_dir):
     os.makedirs(args.output_dir)
 
-logger.info("Saving model checkpoint to %s", args.output_dir)
+logger.info("Saving final model checkpoint to %s", args.output_dir)
 # Save a trained model, configuration and tokenizer using `save_pretrained()`.
 # They can then be reloaded using `from_pretrained()`
 model.save_pretrained(args.output_dir)
@@ -428,9 +445,6 @@ if args.eval_all_checkpoints:
 
 results = {}
 for checkpoint in checkpoints:
-    if 'loss' not in checkpoint and 'f1' not in checkpoint:
-        continue
-    ep = checkpoint.split("-")[1] if len(checkpoints) > 1 else ""
     model = LayoutLMForTokenClassification.from_pretrained(checkpoint)
     _ = model.to(args.device)
     result, _ = evaluate(
@@ -439,11 +453,12 @@ for checkpoint in checkpoints:
         tokenizer,
         labels,
         pad_token_label_id,
-        mode="test",
+        smoothened=True,
+        mode="val",
         prefix=checkpoint,
     )
     print('\n')
-    results[ep] = result
+    results[checkpoint] = result
 
 import json
 output_eval_file = os.path.join(args.output_dir, "eval_results.json")
