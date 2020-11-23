@@ -45,9 +45,10 @@ class DatasetForTokenClassification(Dataset):
                 pad_token_segment_id=4 if args.model_type in ["xlnet"] else 0,
                 pad_token_label_id=pad_token_label_id,
             )
+            # for example, feature in zip(examples, features):
+            #     print(len(example.words), len([id for id in feature.label_ids if id != -1 and id != pad_token_label_id]))
             logger.info("Saving features into cached file %s", cached_features_file)
             torch.save(features, cached_features_file)
-
 
         self.features = features
         # Convert to Tensors and build dataset
@@ -103,18 +104,18 @@ class InputFeatures(object):
     """A single set of features of data."""
 
     def __init__(
-        self,
-        input_ids,
-        attention_mask,
-        segment_ids,
-        label_ids,
-        boxes,
-        actual_bboxes,
-        file_name,
-        page_size,
+            self,
+            input_ids,
+            attention_mask,
+            segment_ids,
+            label_ids,
+            boxes,
+            actual_bboxes,
+            file_name,
+            page_size,
     ):
         assert (
-            0 <= all(boxes) <= 1000
+                0 <= all(boxes) <= 1000
         ), "Error with input bbox ({}): the coordinate value is not between 0 and 1000".format(
             boxes
         )
@@ -135,7 +136,7 @@ def read_examples_from_file(data_dir, mode):
     guid_index = 1
     examples = []
     with open(file_path, encoding="utf-8") as f, open(
-        box_file_path, encoding="utf-8"
+            box_file_path, encoding="utf-8"
     ) as fb, open(image_file_path, encoding="utf-8") as fi:
         words = []
         boxes = []
@@ -180,9 +181,9 @@ def read_examples_from_file(data_dir, mode):
                 box = bsplits[-1].replace("\n", "")
                 box = [int(b) for b in box.split()]
                 boxes.append(box)
-                actual_bbox = [int(b) for b in isplits[1].split()]
+                actual_bbox = [int(float(b)) for b in isplits[1].split()]
                 actual_bboxes.append(actual_bbox)
-                page_size = [int(i) for i in isplits[2].split()]
+                page_size = [int(float(i)) for i in isplits[2].split()]
                 file_name = isplits[3].strip()
         if words:
             examples.append(
@@ -200,24 +201,24 @@ def read_examples_from_file(data_dir, mode):
 
 
 def convert_examples_to_features(
-    examples,
-    label_list,
-    max_seq_length,
-    tokenizer,
-    cls_token_at_end=False,
-    cls_token="[CLS]",
-    cls_token_segment_id=1,
-    sep_token="[SEP]",
-    sep_token_extra=False,
-    pad_on_left=False,
-    pad_token=0,
-    cls_token_box=[0, 0, 0, 0],
-    sep_token_box=[1000, 1000, 1000, 1000],
-    pad_token_box=[0, 0, 0, 0],
-    pad_token_segment_id=0,
-    pad_token_label_id=-1,
-    sequence_a_segment_id=0,
-    mask_padding_with_zero=True,
+        examples,
+        label_list,
+        max_seq_length,
+        tokenizer,
+        cls_token_at_end=False,
+        cls_token="[CLS]",
+        cls_token_segment_id=1,
+        sep_token="[SEP]",
+        sep_token_extra=False,
+        pad_on_left=False,
+        pad_token=0,
+        cls_token_box=[0, 0, 0, 0],
+        sep_token_box=[1000, 1000, 1000, 1000],
+        pad_token_box=[0, 0, 0, 0],
+        pad_token_segment_id=0,
+        pad_token_label_id=-1,
+        sequence_a_segment_id=0,
+        mask_padding_with_zero=True,
 ):
     """ Loads a data file into a list of `InputBatch`s
         `cls_token_at_end` define the location of the CLS token:
@@ -243,10 +244,16 @@ def convert_examples_to_features(
         token_boxes = []
         actual_bboxes = []
         label_ids = []
+
+        assert len(example.words) == len(example.labels)
+        non_blank_label_ids = []
+
         for word, label, box, actual_bbox in zip(
-            example.words, example.labels, example.boxes, example.actual_bboxes
+                example.words, example.labels, example.boxes, example.actual_bboxes
         ):
             word_tokens = tokenizer.tokenize(word)
+            assert len(word_tokens) > 0
+            # print(word)
             tokens.extend(word_tokens)
             token_boxes.extend([box] * len(word_tokens))
             actual_bboxes.extend([actual_bbox] * len(word_tokens))
@@ -254,6 +261,7 @@ def convert_examples_to_features(
             label_ids.extend(
                 [label_map.get(label, 0)] + [pad_token_label_id] * (len(word_tokens) - 1)
             )
+            non_blank_label_ids.append(label_map.get(label, 0))
 
         # Account for [CLS] and [SEP] with "- 2" and with "- 3" for RoBERTa.
         special_tokens_count = 3 if sep_token_extra else 2
@@ -317,8 +325,8 @@ def convert_examples_to_features(
         if pad_on_left:
             input_ids = ([pad_token] * padding_length) + input_ids
             attention_mask = (
-                [0 if mask_padding_with_zero else 1] * padding_length
-            ) + attention_mask
+                                     [0 if mask_padding_with_zero else 1] * padding_length
+                             ) + attention_mask
             segment_ids = ([pad_token_segment_id] * padding_length) + segment_ids
             label_ids = ([pad_token_label_id] * padding_length) + label_ids
             token_boxes = ([pad_token_box] * padding_length) + token_boxes
@@ -358,10 +366,12 @@ def convert_examples_to_features(
                 page_size=page_size,
             )
         )
+
     return features
 
+
 class DatasetForMaskedVisualLM:
-    
+
     def __init__(self, args, tokenizer, mode, mlm_probability=0.15):
         cached_features_file = os.path.join(
             args.data_dir,
@@ -371,7 +381,7 @@ class DatasetForMaskedVisualLM:
                 str(args.max_seq_length),
             ),
         )
-        
+
         self.tokenizer = tokenizer
         self.mode = mode
         self.data_dir = args.data_dir
@@ -381,7 +391,7 @@ class DatasetForMaskedVisualLM:
             self.batch_size = args.train_batch_size
         else:
             self.batch_size = args.val_batch_size
-        
+
         if os.path.exists(cached_features_file) and not args.overwrite_cache:
             logger.info("Loading features from cached file %s", cached_features_file)
             features = torch.load(cached_features_file)
@@ -391,41 +401,37 @@ class DatasetForMaskedVisualLM:
             features = self.convert_examples_to_features(examples)
             logger.info("Saving features into cached file %s", cached_features_file)
             torch.save(features, cached_features_file)
-        
+
         self.features = sorted(features, key=lambda x: len(x.input_ids))
-        
+
         self.num_batch = math.ceil(len(self.features) / self.batch_size)
-        
+
         self.remaining_indices = [i for i in range(len(self.features))]
-    
-    
+
     def __len__(self):
         return len(self.features)
-    
-    
+
     def next_batch(self):
         if len(self.remaining_indices) == 0:
             self.remaining_indices = [i for i in range(len(self.features))]
-        
+
         random_idx = random.randint(0, max(0, len(self.remaining_indices) - self.batch_size - 1))
-        chosen_indices = self.remaining_indices[random_idx : random_idx + self.batch_size]
-        # print(chosen_indices)
-        
+        chosen_indices = self.remaining_indices[random_idx: random_idx + self.batch_size]
+
         batch = self._collate_batch([self.features[i] for i in chosen_indices])
         batch = self.mask_tokens(batch)
-        
-        del self.remaining_indices[random_idx : random_idx + self.batch_size]
-        
+
+        del self.remaining_indices[random_idx: random_idx + self.batch_size]
+
         return batch
-    
-    
+
     def read_examples_from_file(self):
         box_file_path = os.path.join(self.data_dir, "{}_box.txt".format(self.mode))
         image_file_path = os.path.join(self.data_dir, "{}_image.txt".format(self.mode))
         guid_index = 1
         examples = []
         with open(box_file_path, encoding="utf-8"
-        ) as fb, open(image_file_path, encoding="utf-8") as fi:
+                  ) as fb, open(image_file_path, encoding="utf-8") as fi:
             words = []
             boxes = []
             actual_bboxes = []
@@ -476,19 +482,18 @@ class DatasetForMaskedVisualLM:
                         page_size=page_size,
                     )
                 )
-        
+
         return examples
-    
-    
+
     def convert_examples_to_features(
-        self,
-        examples,
-        cls_token_at_end=False,
-        cls_token_segment_id=0,
-        cls_token_box=[0, 0, 0, 0],
-        sep_token_box=[1000, 1000, 1000, 1000],
-        pad_token_box=[0, 0, 0, 0],
-        sequence_a_segment_id=0,
+            self,
+            examples,
+            cls_token_at_end=False,
+            cls_token_segment_id=0,
+            cls_token_box=[0, 0, 0, 0],
+            sep_token_box=[1000, 1000, 1000, 1000],
+            pad_token_box=[0, 0, 0, 0],
+            sequence_a_segment_id=0,
     ):
         """ Loads a data file into a list of `InputBatch`s
             `cls_token_at_end` define the location of the CLS token:
@@ -496,7 +501,7 @@ class DatasetForMaskedVisualLM:
                 - True (XLNet/GPT pattern): A + [SEP] + B + [SEP] + [CLS]
             `cls_token_segment_id` define the segment id associated to the CLS token (0 for BERT, 2 for XLNet)
         """
-    
+
         features = []
         for (ex_index, example) in enumerate(examples):
             file_name = example.file_name
@@ -504,25 +509,25 @@ class DatasetForMaskedVisualLM:
             width, height = page_size
             if ex_index % 10000 == 0:
                 logger.info("Writing example %d of %d", ex_index, len(examples))
-    
+
             tokens = []
             token_boxes = []
             actual_bboxes = []
             for word, box, actual_bbox in zip(
-                example.words, example.boxes, example.actual_bboxes
+                    example.words, example.boxes, example.actual_bboxes
             ):
                 word_tokens = self.tokenizer.tokenize(word)
                 tokens.extend(word_tokens)
                 token_boxes.extend([box] * len(word_tokens))
                 actual_bboxes.extend([actual_bbox] * len(word_tokens))
-    
+
             # Account for [CLS] and [SEP] with "- 2" and with "- 3" for RoBERTa.
-            special_tokens_count =  2
+            special_tokens_count = 2
             if len(tokens) > self.max_seq_length - special_tokens_count:
                 tokens = tokens[: (self.max_seq_length - special_tokens_count)]
                 token_boxes = token_boxes[: (self.max_seq_length - special_tokens_count)]
                 actual_bboxes = actual_bboxes[: (self.max_seq_length - special_tokens_count)]
-    
+
             # The convention in BERT is:
             # (a) For sequence pairs:
             #  tokens:   [CLS] is this jack ##son ##ville ? [SEP] no it is not . [SEP]
@@ -541,14 +546,14 @@ class DatasetForMaskedVisualLM:
             # For classification tasks, the first vector (corresponding to [CLS]) is
             # used as as the "sentence vector". Note that this only makes sense because
             # the entire model is fine-tuned.
-            
+
             # add sep_token
             tokens += [self.tokenizer.sep_token]
             token_boxes += [sep_token_box]
             actual_bboxes += [[0, 0, width, height]]
-            
+
             segment_ids = [sequence_a_segment_id] * len(tokens)
-    
+
             if cls_token_at_end:
                 tokens += [self.tokenizer.cls_token]
                 token_boxes += [cls_token_box]
@@ -559,13 +564,13 @@ class DatasetForMaskedVisualLM:
                 token_boxes = [cls_token_box] + token_boxes
                 actual_bboxes = [[0, 0, width, height]] + actual_bboxes
                 segment_ids = [cls_token_segment_id] + segment_ids
-    
+
             input_ids = self.tokenizer.convert_tokens_to_ids(tokens)
-    
+
             # The mask has 1 for real tokens and 0 for padding tokens. Only real
             # tokens are attended to.
             attention_mask = [1] * len(input_ids)
-    
+
             if ex_index < 5:
                 logger.info("*** Example ***")
                 logger.info("guid: %s", example.guid)
@@ -575,7 +580,7 @@ class DatasetForMaskedVisualLM:
                 logger.info("segment_ids: %s", " ".join([str(x) for x in segment_ids]))
                 logger.info("boxes: %s", " ".join([str(x) for x in token_boxes]))
                 logger.info("actual_bboxes: %s", " ".join([str(x) for x in actual_bboxes]))
-    
+
             features.append(
                 InputFeatures(
                     input_ids=input_ids,
@@ -588,16 +593,15 @@ class DatasetForMaskedVisualLM:
                     page_size=page_size,
                 )
             )
-        
+
         return features
-    
-    
+
     def _collate_batch(self, examples, pad_token_box=[0, 0, 0, 0]):
         """Collate `examples` into a batch, using the information in `tokenizer` for padding if necessary."""
 
         # Check if padding is necessary.
         length_of_first = len(examples[0].input_ids)
-        are_tensors_same_length = all(len(x.input_ids) == length_of_first 
+        are_tensors_same_length = all(len(x.input_ids) == length_of_first
                                       for x in examples)
         if are_tensors_same_length:
             return {
@@ -606,7 +610,7 @@ class DatasetForMaskedVisualLM:
                 'attention_mask': torch.tensor([e.attention_mask for e in examples], dtype=torch.long),
                 'boxes': torch.tensor([e.boxes for e in examples], dtype=torch.long),
                 'special_tokens_mask': torch.tensor([[1] + [0] * (len(e.input_ids) - 2) + [1]
-                                                     for e in examples], 
+                                                     for e in examples],
                                                     dtype=torch.long)
             }
 
@@ -627,10 +631,10 @@ class DatasetForMaskedVisualLM:
             padding_length = max_length - len(e.input_ids)
             input_ids.append(e.input_ids + [self.tokenizer.pad_token_id] * padding_length)
             attention_mask.append(e.attention_mask + [0] * padding_length)
-            boxes.append(e.boxes + [pad_token_box for _  in range(padding_length)])
+            boxes.append(e.boxes + [pad_token_box for _ in range(padding_length)])
             this_special_tokens_mask = [1] + [0] * (len(e.input_ids) - 2) + [1]
             special_tokens_mask.append(this_special_tokens_mask + [1] * padding_length)
-        
+
         return {
             'input_ids': torch.tensor(input_ids, dtype=torch.long),
             'label_ids': torch.tensor(input_ids, dtype=torch.long),
@@ -638,14 +642,13 @@ class DatasetForMaskedVisualLM:
             'boxes': torch.tensor(boxes, dtype=torch.long),
             'special_tokens_mask': torch.tensor(special_tokens_mask, dtype=torch.long)
         }
-    
-    
+
     def mask_tokens(self, batch):
         batch_shape = batch['input_ids'].shape
-        
+
         # We sample a few tokens in each sequence for MLM training (with probability `self.mlm_probability`)
         probability_matrix = torch.full(batch_shape, self.mlm_probability)
-        
+
         # print(batch)
         special_tokens_mask = batch['special_tokens_mask'].bool()
 
@@ -664,4 +667,3 @@ class DatasetForMaskedVisualLM:
 
         # The rest of the time (10% of the time) we keep the masked input tokens unchanged
         return batch
-
