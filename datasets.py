@@ -32,6 +32,7 @@ class DatasetForTokenClassification(Dataset):
                 labels,
                 args.max_seq_length,
                 tokenizer,
+                args.is_tokenized,
                 cls_token_at_end=bool(args.model_type in ["xlnet"]),
                 # xlnet has a cls token at the end
                 cls_token=tokenizer.cls_token,
@@ -205,6 +206,7 @@ def convert_examples_to_features(
         label_list,
         max_seq_length,
         tokenizer,
+        is_tokenized,
         cls_token_at_end=False,
         cls_token="[CLS]",
         cls_token_segment_id=1,
@@ -251,7 +253,15 @@ def convert_examples_to_features(
         for word, label, box, actual_bbox in zip(
                 example.words, example.labels, example.boxes, example.actual_bboxes
         ):
-            word_tokens = tokenizer.tokenize(word)
+            assert box[0] <= box[2]
+            assert box[1] <= box[3]
+            assert box[0] < box[2]
+            assert box[1] < box[3]
+            
+            if is_tokenized:
+                word_tokens = [word]
+            else:
+                word_tokens = tokenizer.tokenize(word)
             assert len(word_tokens) > 0
             # print(word)
             tokens.extend(word_tokens)
@@ -383,6 +393,7 @@ class DatasetForMaskedVisualLM:
         )
 
         self.tokenizer = tokenizer
+        self.is_tokenized = args.is_tokenized
         self.mode = mode
         self.data_dir = args.data_dir
         self.max_seq_length = args.max_seq_length
@@ -398,7 +409,7 @@ class DatasetForMaskedVisualLM:
         else:
             logger.info("Creating features from dataset file at %s", args.data_dir)
             examples = self.read_examples_from_file()
-            features = self.convert_examples_to_features(examples)
+            features = self.convert_examples_to_features(examples, self.is_tokenized)
             logger.info("Saving features into cached file %s", cached_features_file)
             torch.save(features, cached_features_file)
 
@@ -488,6 +499,7 @@ class DatasetForMaskedVisualLM:
     def convert_examples_to_features(
             self,
             examples,
+            is_tokenized,
             cls_token_at_end=False,
             cls_token_segment_id=0,
             cls_token_box=[0, 0, 0, 0],
@@ -516,7 +528,10 @@ class DatasetForMaskedVisualLM:
             for word, box, actual_bbox in zip(
                     example.words, example.boxes, example.actual_bboxes
             ):
-                word_tokens = self.tokenizer.tokenize(word)
+                if is_tokenized:
+                    word_tokens = [word]
+                else:
+                    word_tokens = self.tokenizer.tokenize(word)
                 tokens.extend(word_tokens)
                 token_boxes.extend([box] * len(word_tokens))
                 actual_bboxes.extend([actual_bbox] * len(word_tokens))

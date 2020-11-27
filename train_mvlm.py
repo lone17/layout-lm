@@ -2,6 +2,7 @@ import os
 import glob
 import json
 import time
+import copy
 import logging
 import datetime
 from pathlib import Path
@@ -16,6 +17,8 @@ from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from transformers import (
     WEIGHTS_NAME,
+    AutoTokenizer,
+    BertModel,
     LayoutLMTokenizer, 
     LayoutLMForMaskedLM,
     LayoutLMModel, 
@@ -289,10 +292,11 @@ args = dict(
     device='cuda',
     eval_all_checkpoints=True,
     use_val=True,
-    load_pretrain=False,
+    load_pretrain=True,
     freeze_lm=False,
     so_only=True,
-    batch_size=8
+    batch_size=8,
+    word_embedder='cl-tohoku/bert-base-japanese'
 )
 class Args:
     def __init__(self, args):
@@ -311,81 +315,92 @@ logging.basicConfig(
 
 logger.addHandler(logging.StreamHandler())
 
-tokenizer = LayoutLMTokenizer.from_pretrained(args.model_name_or_path,
-                                              do_lower_case=True)
+if if args.word_embedder is None::
+    tokenizer = LayoutLMTokenizer.from_pretrained(args.model_name_or_path,
+                                                  do_lower_case=True)
+else:
+    tokenizer = AutoTokenizer.from_pretrained(args.word_embedder)
 
 if args.load_pretrain:
     model = LayoutLMForMaskedLM.from_pretrained(args.model_name_or_path, 
-                                                           return_dict=True)
+                                                return_dict=True)
+    if args.word_embedder is not None::
+        jp_bert = BertModel.from_pretrained(args.word_embedder)
+        model.config.vocab_size = tokenizer.vocab_size
+        model.layoutlm.embeddings.word_embeddings = copy.deepcopy(jp_bert.embeddings.word_embeddings)
+        del jp_bert
+    
 else:
     config = LayoutLMConfig.from_pretrained(args.model_name_or_path, 
                                             return_dict=True)
+    if args.word_embedder is None::
+        config.vocab_size = tokenizer.vocab_size
     model = LayoutLMForMaskedLM(config)
 
-model.to(args.device)
-
-if args.freeze_lm:
-    for param in model.base_model.parameters():
-        param.requires_grad = False
-
-logger.info("Training/evaluation parameters %s", args.__dict__)
-
-logger.info('Training...')
-
-train_dataset = DatasetForMaskedVisualLM(args, tokenizer, mode="train", batch_size=args.train_batch_size)
-
-# for e in range(3):
-#     for i in tqdm([train_dataset.next_batch() for i in range(train_dataset.num_batch)]):
-#         pass
-
-global_step, tr_loss = train(args, train_dataset, model, tokenizer)
+# model.to(args.device)
 # 
-# Create output directory if needed
-if not os.path.exists(args.output_dir):
-    os.makedirs(args.output_dir)
-
-logger.info("Saving final model checkpoint to %s", args.output_dir)
-# Save a trained model, configuration and tokenizer using `save_pretrained()`.
-# They can then be reloaded using `from_pretrained()`
-model.save_pretrained(args.output_dir)
-tokenizer.save_pretrained(args.output_dir)
-
-# Good practice: save your training arguments together with the trained model
-torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
-
-
-logger.info('Evaluating...')
-
-checkpoints = [args.output_dir]
-if args.eval_all_checkpoints:
-    checkpoints = list(
-        os.path.dirname(c)
-        for c in sorted(
-            glob.glob(args.output_dir + "/**/" + WEIGHTS_NAME, recursive=True)
-        )
-    )
-    logging.getLogger("pytorch_transformers.modeling_utils").setLevel(
-        logging.WARN
-    )  # Reduce logging
-
-results = {}
-for checkpoint in checkpoints:
-    model = LayoutLMForMaskedLM.from_pretrained(checkpoint)
-    _ = model.to(args.device)
-    result = evaluate(
-        args,
-        model,
-        tokenizer,
-        mode="val",
-        prefix=checkpoint,
-    )
-    print('\n')
-    results[checkpoint] = result
-
-import json
-output_eval_file = os.path.join(args.output_dir, "eval_results.json")
-with open(output_eval_file, "w", encoding='utf-8') as f:
-    json.dump(results, f, ensure_ascii=False, indent=4)
-
-import pprint
-pprint.pprint(results)
+# if args.freeze_lm:
+#     for param in model.base_model.parameters():
+#         param.requires_grad = False
+# 
+# logger.info("Training/evaluation parameters %s", args.__dict__)
+# 
+# logger.info('Training...')
+# 
+# train_dataset = DatasetForMaskedVisualLM(args, tokenizer, mode="train", batch_size=args.train_batch_size)
+# 
+# # for e in range(3):
+# #     for i in tqdm([train_dataset.next_batch() for i in range(train_dataset.num_batch)]):
+# #         pass
+# 
+# global_step, tr_loss = train(args, train_dataset, model, tokenizer)
+# # 
+# # Create output directory if needed
+# if not os.path.exists(args.output_dir):
+#     os.makedirs(args.output_dir)
+# 
+# logger.info("Saving final model checkpoint to %s", args.output_dir)
+# # Save a trained model, configuration and tokenizer using `save_pretrained()`.
+# # They can then be reloaded using `from_pretrained()`
+# model.save_pretrained(args.output_dir)
+# tokenizer.save_pretrained(args.output_dir)
+# 
+# # Good practice: save your training arguments together with the trained model
+# torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
+# 
+# 
+# logger.info('Evaluating...')
+# 
+# checkpoints = [args.output_dir]
+# if args.eval_all_checkpoints:
+#     checkpoints = list(
+#         os.path.dirname(c)
+#         for c in sorted(
+#             glob.glob(args.output_dir + "/**/" + WEIGHTS_NAME, recursive=True)
+#         )
+#     )
+#     logging.getLogger("pytorch_transformers.modeling_utils").setLevel(
+#         logging.WARN
+#     )  # Reduce logging
+# 
+# results = {}
+# for checkpoint in checkpoints:
+#     model = LayoutLMForMaskedLM.from_pretrained(checkpoint)
+#     _ = model.to(args.device)
+#     result = evaluate(
+#         args,
+#         model,
+#         tokenizer,
+#         mode="val",
+#         prefix=checkpoint,
+#     )
+#     print('\n')
+#     results[checkpoint] = result
+# 
+# import json
+# output_eval_file = os.path.join(args.output_dir, "eval_results.json")
+# with open(output_eval_file, "w", encoding='utf-8') as f:
+#     json.dump(results, f, ensure_ascii=False, indent=4)
+# 
+# import pprint
+# pprint.pprint(results)

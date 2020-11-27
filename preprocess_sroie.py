@@ -3,6 +3,7 @@ import json
 import math
 import random
 import argparse
+from pathlib import Path
 from queue import PriorityQueue
 
 import cv2
@@ -254,12 +255,12 @@ def merge_line_by_key(lines):
     return new_lines
 
 
-def convert_sroie_to_funsd(data_dir, output_dir, visualize):
+def convert_sroie_to_funsd(args):
     annotations = {}
-    from pathlib import Path
-    visualization_dir = Path(output_dir) / 'visualization'
-    visualization_dir.mkdir(parents=True, exist_ok=True)
-    for image_path in paths.list_images(os.path.join(data_dir, '0325updated.task2train(626p)')):
+    if args.visualize:
+        visualization_dir = Path(args.output_dir) / 'visualization'
+        visualization_dir.mkdir(parents=True, exist_ok=True)
+    for image_path in paths.list_images(os.path.join(args.data_dir, '0325updated.task2train(626p)')):
         if ').' in os.path.basename(image_path):
             continue
         # if 'X51006414485' not in os.path.basename(image_path):
@@ -303,10 +304,18 @@ def convert_sroie_to_funsd(data_dir, output_dir, visualize):
             for w in text.split():
                 current_word = {}
                 word_width = int((len(w) + 1) / len(text) * line_width)
+                start_x = min(start_x, x2)
                 end_x = min(x2, start_x + word_width)
+                if start_x > end_x or y1 > y2:
+                    print(line_width, tokenizer.tokenize(text))
+                    print(word_width)
+                    print('#' * 60, 'ERROR')
+                    print(file_name, text, w, sep='|')
+                    import IPython
+                    IPython.embed()
                 current_word['text'] = w
                 current_word['box'] = [start_x, y1, end_x, y2]
-                start_x = start_x + 1
+                start_x = end_x + 1
                 words.append(current_word)
             
             current_line['words'] = words
@@ -316,14 +325,15 @@ def convert_sroie_to_funsd(data_dir, output_dir, visualize):
         kv_label = json.load(open(kv_label_path, 'r', encoding='utf8'))
         
         lines = add_kv_label(lines, kv_label)
-        lines = merge_line_by_key(lines)
+        if args.multiline:
+            lines = merge_line_by_key(lines)
         current_item['form'] = lines
         
         annotations[file_name] = current_item
         
         # from pprint import pprint
         # pprint(kv_label)
-        if visualize:
+        if args.visualize:
             image = np.array(image)
             for line in current_item['form']:
                 if line['label'] != 'other':
@@ -487,29 +497,29 @@ def seg_file(file_path, tokenizer, max_len):
             fw_p.write(line + "\n")
 
 
-def seg(model_name_or_path, output_dir, data_split, max_len):
+def seg(data_split, args):
     tokenizer = AutoTokenizer.from_pretrained(
-        model_name_or_path, do_lower_case=True
+        args.model_name_or_path, do_lower_case=True
     )
     seg_file(
-        os.path.join(output_dir, data_split + ".txt.tmp"),
+        os.path.join(args.output_dir, data_split + ".txt.tmp"),
         tokenizer,
-        max_len,
+        args.max_len,
     )
     seg_file(
-        os.path.join(output_dir, data_split + "_box.txt.tmp"),
+        os.path.join(args.output_dir, data_split + "_box.txt.tmp"),
         tokenizer,
-        max_len,
+        args.max_len,
     )
     seg_file(
-        os.path.join(output_dir, data_split + "_image.txt.tmp"),
+        os.path.join(args.output_dir, data_split + "_image.txt.tmp"),
         tokenizer,
-        max_len,
+        args.max_len,
     )
     
     if data_split == 'train':
         label_list = set()
-        for line in open(os.path.join(output_dir, 'train.txt'), 
+        for line in open(os.path.join(args.output_dir, 'train.txt'), 
                          'r', encoding='utf8').read().split('\n'):
             if not line:
                 continue
@@ -518,30 +528,30 @@ def seg(model_name_or_path, output_dir, data_split, max_len):
         label_list = sorted(list(label_list))
         # from IPython import embed
         # embed()
-        with open(os.path.join(output_dir, 'labels.txt'), 'w', encoding='utf8') as f:
+        with open(os.path.join(args.output_dir, 'labels.txt'), 'w', encoding='utf8') as f:
             f.write('\n'.join(label_list))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_dir", type=str, default=r"D:\Experiments\layout-lm\SROIE2019"
+        "--data_dir", type=str, default=r"D:\Experiments\layout-lm\data_raw\SROIE2019"
     )
     parser.add_argument("--output_dir", type=str, default="sroie_multiline_SO_with_val")
     parser.add_argument("--model_name_or_path", type=str, default="bert-base-uncased")
     parser.add_argument("--max_len", type=int, default=510)
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument("--train_size", type=float, default=0.8)
-    parser.add_argument("--so_only", type=bool, default=True)
+    parser.add_argument("--so_only", type=bool, default=False)
+    parser.add_argument("--multiline", type=bool, default=False)
+    parser.add_argument("--visualize", type=bool, default=False)
     args = parser.parse_args()
     
-    from pathlib import Path
     p = Path(args.output_dir)
     if not p.exists():
         p.mkdir(parents=True, exist_ok=True)
     
-    annotations = convert_sroie_to_funsd(args.data_dir, args.output_dir,
-                                         visualize=False)
+    annotations = convert_sroie_to_funsd(args)
     key_list = list(annotations.keys())
     random.seed(args.seed)
     random.shuffle(key_list)
@@ -552,7 +562,7 @@ if __name__ == "__main__":
                 if k in key_list[:split_point]
             }, 
             args.output_dir, 'train', args.so_only)
-    seg(args.model_name_or_path, args.output_dir, 'train', args.max_len)
+    seg('train', args)
     
     if args.train_size < 1:
         convert({
@@ -560,4 +570,4 @@ if __name__ == "__main__":
                     if k in key_list[split_point:]
                 }, 
                 args.output_dir, 'val', args.so_only)
-        seg(args.model_name_or_path, args.output_dir, 'val', args.max_len)
+        seg('val', args)

@@ -1,4 +1,5 @@
 import os
+import copy
 import glob
 import json
 import time
@@ -16,7 +17,9 @@ from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from transformers import (
     WEIGHTS_NAME,
-    LayoutLMTokenizer,
+    AutoTokenizer,
+    BertModel,
+    LayoutLMTokenizer, 
     LayoutLMForTokenClassification,
     LayoutLMModel,
     LayoutLMConfig,
@@ -118,30 +121,52 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode,
 
     flat_pred = [p for preds in preds_list for p in preds]
     flat_label = [p for labels_ in out_label_list for p in labels_]
-    print(token_classification_report(flat_label, flat_pred))
+    token_report = token_classification_report(flat_label, flat_pred)
 
-    results = {
-        "loss": eval_loss,
-        "precision": precision_score(out_label_list, preds_list),
-        "recall": recall_score(out_label_list, preds_list),
-        "f1": f1_score(out_label_list, preds_list),
-    }
-
-    if args.so_only:
+    if not args.so_only:
+        results = {
+            "loss": eval_loss,
+            
+            "field_precision": precision_score(out_label_list, preds_list),
+            "field_recall": recall_score(out_label_list, preds_list),
+            "field_f1": f1_score(out_label_list, preds_list),
+            
+            "token_precision": token_precision_score(out_label_list, preds_list),
+            "token_recall": token_recall_score(out_label_list, preds_list),
+            "token_f1": token_f1_score(out_label_list, preds_list),
+        }
+    else:
+        results = {
+            "loss": eval_loss,
+            
+            "seqeval_precision": precision_score(out_label_list, preds_list),
+            "seqeval_recall": recall_score(out_label_list, preds_list),
+            "seqeval_f1": f1_score(out_label_list, preds_list),
+            
+            "token_precision": token_precision_score(out_label_list, preds_list),
+            "token_recall": token_recall_score(out_label_list, preds_list),
+            "token_f1": token_f1_score(out_label_list, preds_list),
+        }
         for i, p in enumerate(preds_list):
             preds_list[i] = convert_SO_to_BIOES(p)
         for i, l in enumerate(out_label_list):
             out_label_list[i] = convert_SO_to_BIOES(l)
-        BIOES_results = {
-            "BIOES_precision": precision_score(out_label_list, preds_list),
-            "BIOES_recall": recall_score(out_label_list, preds_list),
-            "BIOES_f1": f1_score(out_label_list, preds_list),
+        field_results = {
+            "field_precision": precision_score(out_label_list, preds_list),
+            "field_recall": recall_score(out_label_list, preds_list),
+            "field_f1": f1_score(out_label_list, preds_list),
         }
-        results.update(BIOES_results)
+        results.update(field_results)
 
     if verbose:
-        report = classification_report(out_label_list, preds_list)
-        logger.info("\n" + report)
+        field_report = classification_report(out_label_list, preds_list)
+        
+        logger.info("\n")
+        logger.info("By-token report")
+        logger.info(token_report)
+        logger.info("\n")
+        logger.info("By-field report")
+        logger.info(field_report)
 
         logger.info("***** Eval results %s *****", prefix)
         for key in sorted(results.keys()):
@@ -345,14 +370,14 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
 
 
 args = dict(
-    data_dir='data_toshiba',
+    data_dir='invoice3_layoutlm',
     max_seq_length=512,
     model_name_or_path='microsoft/layoutlm-base-uncased',
     model_type='layoutlm',
     num_train_epochs=100,
     learning_rate=5e-5,
     weight_decay=0.0,
-    output_dir='toshiba_seq',
+    output_dir='invoice3_run1',
     overwrite_cache=True,
     train_batch_size=2,
     eval_batch_size=16,
@@ -363,14 +388,16 @@ args = dict(
     save_steps=-1,
     logging_steps=1,
     max_grad_norm=1.0,
-    device='cuda',
+    device='cpu',
     eval_all_checkpoints=True,
     use_val=True,
     load_pretrain=True,
     freeze_lm=False,
     att_on_cls=False,
-    so_only=False,
-    test_only=True
+    so_only=True,
+    test_only=False,
+    word_embedder='cl-tohoku/bert-base-japanese',
+    is_tokenized=True
 )
 
 
@@ -384,7 +411,8 @@ args = Args(args)
 Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
-    filename=os.path.join(args.output_dir, "train.log"),
+    handlers=[logging.FileHandler(os.path.join(args.output_dir, "train.log"), 'w', 'utf-8')],
+    # filename=os.path.join(args.output_dir, "train.log"),
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
     datefmt="%m/%d/%Y %H:%M:%S",
     level=logging.INFO,
@@ -398,17 +426,27 @@ num_labels = len(labels)
 
 pad_token_label_id = nn.CrossEntropyLoss().ignore_index
 
-tokenizer = LayoutLMTokenizer.from_pretrained(args.model_name_or_path,
-                                              do_lower_case=True)
+if args.word_embedder is None:
+    tokenizer = LayoutLMTokenizer.from_pretrained(args.model_name_or_path,
+                                                  do_lower_case=True)
+else:
+    tokenizer = AutoTokenizer.from_pretrained(args.word_embedder)
 
 if args.load_pretrain:
     model = LayoutLMForTokenClassification.from_pretrained(args.model_name_or_path,
                                                            num_labels=num_labels,
                                                            return_dict=True)
+    if args.word_embedder is not None:
+        jp_bert = BertModel.from_pretrained(args.word_embedder)
+        model.config.vocab_size = tokenizer.vocab_size
+        model.layoutlm.embeddings.word_embeddings = copy.deepcopy(jp_bert.embeddings.word_embeddings)
+        del jp_bert
 else:
     config = LayoutLMConfig.from_pretrained(args.model_name_or_path,
                                             num_labels=num_labels,
                                             return_dict=True)
+    if args.word_embedder is not None:
+        config.vocab_size = tokenizer.vocab_size 
     model = LayoutLMForTokenClassification(config)
 
 if args.att_on_cls:
@@ -445,47 +483,46 @@ if not args.test_only:
 
     # Good practice: save your training arguments together with the trained model
     torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
-else:
 
-    logger.info('Evaluating...')
+logger.info('Evaluating...')
 
-    checkpoints = [args.output_dir]
-    if args.eval_all_checkpoints:
-        checkpoints = list(
-            os.path.dirname(c)
-            for c in sorted(
-                glob.glob(args.output_dir + "/**/" + WEIGHTS_NAME, recursive=True)
-            )
+checkpoints = [args.output_dir]
+if args.eval_all_checkpoints:
+    checkpoints = list(
+        os.path.dirname(c)
+        for c in sorted(
+            glob.glob(args.output_dir + "/**/" + WEIGHTS_NAME, recursive=True)
         )
-        logging.getLogger("pytorch_transformers.modeling_utils").setLevel(
-            logging.WARN
-        )  # Reduce logging
+    )
+    logging.getLogger("pytorch_transformers.modeling_utils").setLevel(
+        logging.WARN
+    )  # Reduce logging
 
-    results = {}
-    for checkpoint in checkpoints:
-        model = LayoutLMForTokenClassification.from_pretrained(checkpoint)
-        _ = model.to(args.device)
-        result, pred = evaluate(
-            args,
-            model,
-            tokenizer,
-            labels,
-            pad_token_label_id,
-            smoothened=False,
-            mode="val",
-            prefix=checkpoint,
-        )
-        print('\n')
-        results[checkpoint] = {
-            'result': result,
-            'pred': pred
-        }
+results = {}
+for checkpoint in checkpoints:
+    model = LayoutLMForTokenClassification.from_pretrained(checkpoint)
+    _ = model.to(args.device)
+    result, pred = evaluate(
+        args,
+        model,
+        tokenizer,
+        labels,
+        pad_token_label_id,
+        smoothened=False,
+        mode="test",
+        prefix=checkpoint,
+    )
+    print('\n')
+    results[checkpoint] = {
+        'result': result,
+        'pred': pred
+    }
 
-    import json
+import json
 
-    output_eval_file = os.path.join(args.output_dir, "eval_results.json")
-    with open(output_eval_file, "w", encoding='utf-8') as f:
-        json.dump(results, f, ensure_ascii=False, indent=4)
+output_eval_file = os.path.join(args.output_dir, "eval_results.json")
+with open(output_eval_file, "w", encoding='utf-8') as f:
+    json.dump(results, f, ensure_ascii=False, indent=4)
 
     # import pprint
     #
