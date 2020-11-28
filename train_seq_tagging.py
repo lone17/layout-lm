@@ -18,7 +18,10 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from transformers import (
     WEIGHTS_NAME,
     AutoTokenizer,
+    AutoConfig,
+    AutoModel
     BertModel,
+    BertForTokenClassification,
     LayoutLMTokenizer, 
     LayoutLMForTokenClassification,
     LayoutLMModel,
@@ -77,13 +80,21 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode,
     model.eval()
     for batch in tqdm(eval_dataloader, desc="Evaluating", disable=not verbose):
         with torch.no_grad():
-            inputs = {
-                "input_ids": batch[0].to(args.device),
-                "attention_mask": batch[1].to(args.device),
-                "token_type_ids": batch[2].to(args.device),
-                "labels": batch[3].to(args.device),
-                "bbox": batch[4].to(args.device)
-            }
+            if args.bert_only:
+                inputs = {
+                    "input_ids": batch[0].to(args.device),
+                    "attention_mask": batch[1].to(args.device),
+                    "token_type_ids": batch[2].to(args.device),
+                    "labels": batch[3].to(args.device),
+                }
+            else:
+                inputs = {
+                    "input_ids": batch[0].to(args.device),
+                    "attention_mask": batch[1].to(args.device),
+                    "token_type_ids": batch[2].to(args.device),
+                    "labels": batch[3].to(args.device),
+                    "bbox": batch[4].to(args.device)
+                }
 
             outputs = model(**inputs)
             tmp_eval_loss = outputs.loss
@@ -131,9 +142,9 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode,
             "field_recall": recall_score(out_label_list, preds_list),
             "field_f1": f1_score(out_label_list, preds_list),
             
-            "token_precision": token_precision_score(out_label_list, preds_list),
-            "token_recall": token_recall_score(out_label_list, preds_list),
-            "token_f1": token_f1_score(out_label_list, preds_list),
+            "token_precision": token_precision_score(flat_label, flat_pred, average='weighted'),
+            "token_recall": token_recall_score(flat_label, flat_pred, average='weighted'),
+            "token_f1": token_f1_score(flat_label, flat_pred, average='weighted'),
         }
     else:
         results = {
@@ -143,9 +154,9 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode,
             "seqeval_recall": recall_score(out_label_list, preds_list),
             "seqeval_f1": f1_score(out_label_list, preds_list),
             
-            "token_precision": token_precision_score(out_label_list, preds_list),
-            "token_recall": token_recall_score(out_label_list, preds_list),
-            "token_f1": token_f1_score(out_label_list, preds_list),
+            "token_precision": token_precision_score(flat_label, flat_pred, average='weighted'),
+            "token_recall": token_recall_score(flat_label, flat_pred, average='weighted'),
+            "token_f1": token_f1_score(flat_label, flat_pred, average='weighted'),
         }
         for i, p in enumerate(preds_list):
             preds_list[i] = convert_SO_to_BIOES(p)
@@ -243,13 +254,21 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
         for step, batch in enumerate(epoch_iterator):
             model.train()
 
-            inputs = {
-                'input_ids': batch[0].to(args.device),
-                'attention_mask': batch[1].to(args.device),
-                'token_type_ids': batch[2].to(args.device),
-                'labels': batch[3].to(args.device),
-                'bbox': batch[4].to(args.device)
-            }
+            if args.bert_only:
+                inputs = {
+                    "input_ids": batch[0].to(args.device),
+                    "attention_mask": batch[1].to(args.device),
+                    "token_type_ids": batch[2].to(args.device),
+                    "labels": batch[3].to(args.device),
+                }
+            else:
+                inputs = {
+                    "input_ids": batch[0].to(args.device),
+                    "attention_mask": batch[1].to(args.device),
+                    "token_type_ids": batch[2].to(args.device),
+                    "labels": batch[3].to(args.device),
+                    "bbox": batch[4].to(args.device)
+                }
 
             outputs = model(**inputs)
             loss = outputs.loss
@@ -324,8 +343,8 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
             #     best_loss = val_results['loss']
             #     print('saving best loss', best_loss)
 
-            if val_results['f1'] > best_f1:
-                best_f1 = val_results['f1']
+            if val_results['field_f1'] > best_f1:
+                best_f1 = val_results['field_f1']
                 logger.info('saving best f1 - %f', best_f1)
                 # Save model checkpoint
                 output_dir = os.path.join(
@@ -333,9 +352,9 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
                     ''.join("""ep-{}-val_loss-{:.2f}-val_f1-{:.2f}-train_loss-{:.2f}
                             -train_f1-{:.2f}""".split()).format(i,
                                                                 val_results['loss'],
-                                                                val_results['f1'],
+                                                                val_results['field_f1'],
                                                                 train_results['loss'],
-                                                                train_results['f1'])
+                                                                train_results['field_f1'])
                 )
                 if not os.path.exists(output_dir):
                     os.makedirs(output_dir)
@@ -370,14 +389,15 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
 
 
 args = dict(
-    data_dir='invoice3_layoutlm',
+    data_dir='data_processed/sroie_multiline_SO_with_val',
     max_seq_length=512,
-    model_name_or_path='microsoft/layoutlm-base-uncased',
+    layoutlm_model='microsoft/layoutlm-base-uncased',
+    bert_model=None,
     model_type='layoutlm',
     num_train_epochs=100,
     learning_rate=5e-5,
     weight_decay=0.0,
-    output_dir='invoice3_run1',
+    output_dir='experiments/sroie/multiline_SO_1/',
     overwrite_cache=True,
     train_batch_size=2,
     eval_batch_size=16,
@@ -388,17 +408,27 @@ args = dict(
     save_steps=-1,
     logging_steps=1,
     max_grad_norm=1.0,
-    device='cpu',
+    device='cuda',
     eval_all_checkpoints=True,
     use_val=True,
-    load_pretrain=True,
     freeze_lm=False,
     att_on_cls=False,
     so_only=True,
     test_only=False,
-    word_embedder='cl-tohoku/bert-base-japanese',
-    is_tokenized=True
+    is_tokenized=False,
+    bert_only=False,
+    retrain_word_embedder=False,
+    retrain_layout_embedder=False
 )
+
+# For invoice
+args.update(dict(
+    data_dir='data_processed/invoice3',
+    output_dir='experiments/invoice3/bert_only/',
+    so_only=False,
+    bert_model='cl-tohoku/bert-base-japanese',
+    is_tokenized=True,
+))
 
 
 class Args:
@@ -426,28 +456,63 @@ num_labels = len(labels)
 
 pad_token_label_id = nn.CrossEntropyLoss().ignore_index
 
-if args.word_embedder is None:
-    tokenizer = LayoutLMTokenizer.from_pretrained(args.model_name_or_path,
+if args.bert_model is None:
+    tokenizer = LayoutLMTokenizer.from_pretrained(args.layoutlm_model,
                                                   do_lower_case=True)
 else:
-    tokenizer = AutoTokenizer.from_pretrained(args.word_embedder)
+    tokenizer = AutoTokenizer.from_pretrained(args.bert_model)
 
-if args.load_pretrain:
-    model = LayoutLMForTokenClassification.from_pretrained(args.model_name_or_path,
-                                                           num_labels=num_labels,
-                                                           return_dict=True)
-    if args.word_embedder is not None:
-        jp_bert = BertModel.from_pretrained(args.word_embedder)
-        model.config.vocab_size = tokenizer.vocab_size
-        model.layoutlm.embeddings.word_embeddings = copy.deepcopy(jp_bert.embeddings.word_embeddings)
-        del jp_bert
-else:
-    config = LayoutLMConfig.from_pretrained(args.model_name_or_path,
+# Case 0: Using only Bert
+if args.bert_only:
+    model = BertForTokenClassification.from_pretrained(args.bert_model,
+                                                       num_labels=num_labels,
+                                                       return_dict=True)
+elif args.retrain_layout_embedder:
+    # Case 1: Train full LayoutLM from scratch
+    config = LayoutLMConfig.from_pretrained(args.layoutlm_model,
                                             num_labels=num_labels,
                                             return_dict=True)
-    if args.word_embedder is not None:
+    if args.bert_model is not None:
         config.vocab_size = tokenizer.vocab_size 
     model = LayoutLMForTokenClassification(config)
+    
+    # Case 2: Use pretrained word embeddings + train layout embeddings from scratch
+    if not args.retrain_word_embedder:
+        bert = BertModel.from_pretrained(args.bert_model)
+        model.layoutlm.embeddings.word_embeddings = \
+            copy.deepcopy(bert.embeddings.word_embeddings)
+        
+elif:
+    # Case 5: Use full pretrain LayoutLM
+    model = LayoutLMForTokenClassification.from_pretrained(args.layoutlm_model,
+                                                           num_labels=num_labels,
+                                                           return_dict=True)
+    # Case 3: Train word embeddings from scratch + use pretrained layout embeddings
+    if args.retrain_word_embedder:
+        if args.bert_model is not None:
+            bert_config = AutoConfig.from_pretrained(args.bert_model)
+            bert = BertModel(bert_config)
+            model.config.vocab_size = tokenizer.vocab_size
+            model.layoutlm.embeddings.word_embeddings = \
+                copy.deepcopy(bert.embeddings.word_embeddings)
+            del bert
+        else:
+            config = LayoutLMConfig.from_pretrained(args.layoutlm_model,
+                                                    num_labels=num_labels,
+                                                    return_dict=True)
+            tmp_model = LayoutLMForTokenClassification(config)
+            tmp_model.layoutlm.embeddings.word_embeddings = \
+                copy.deepcopy(model.layoutlm.embeddings.word_embeddings)
+            model.layoutlm.embeddings = copy.deepcopy(tmp_mode.layoutlm.embeddings)
+            del tmp_model
+    # Case 4: Use pretrained layout embeddings + pretrained word embeddings
+    else:
+        if args.bert_model is not None:
+            bert = BertModel.from_pretrained(args.bert_model)
+            model.config.vocab_size = tokenizer.vocab_size
+            model.layoutlm.embeddings.word_embeddings = \
+                copy.deepcopy(bert.embeddings.word_embeddings)
+            del bert
 
 if args.att_on_cls:
     self_att = nn.TransformerEncoder(nn.TransformerEncoderLayer(768, 8, 2048, 0.2), 2)
@@ -509,7 +574,7 @@ for checkpoint in checkpoints:
         labels,
         pad_token_label_id,
         smoothened=False,
-        mode="test",
+        mode="val",
         prefix=checkpoint,
     )
     print('\n')
