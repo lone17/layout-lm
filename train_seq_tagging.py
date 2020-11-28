@@ -565,7 +565,7 @@ if args.eval_all_checkpoints:
 
 results = {}
 for checkpoint in checkpoints:
-    model = LayoutLMForTokenClassification.from_pretrained(checkpoint)
+    model = AutoModel.from_pretrained(checkpoint)
     _ = model.to(args.device)
     result, pred = evaluate(
         args,
