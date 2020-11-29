@@ -19,7 +19,7 @@ from transformers import (
     WEIGHTS_NAME,
     AutoTokenizer,
     AutoConfig,
-    AutoModel
+    AutoModel,
     BertModel,
     BertForTokenClassification,
     LayoutLMTokenizer, 
@@ -565,7 +565,10 @@ if args.eval_all_checkpoints:
 
 results = {}
 for checkpoint in checkpoints:
-    model = AutoModel.from_pretrained(checkpoint)
+    if args.bert_only:
+        model = BertForTokenClassification.from_pretrained(checkpoint)
+    else:
+        model = LayoutLMForTokenClassification.from_pretrained(checkpoint)
     _ = model.to(args.device)
     result, pred = evaluate(
         args,
