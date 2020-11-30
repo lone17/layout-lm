@@ -563,6 +563,14 @@ if args.eval_all_checkpoints:
         logging.WARN
     )  # Reduce logging
 
+
+if os.path.exists(os.path.join(args.data_dir, 'test.txt')):
+    eval_data = 'test'
+elif os.path.exists(os.path.join(args.data_dir, 'val.txt')):
+    eval_data = 'val'
+else:
+    eval_data = 'train'
+
 results = {}
 preds = {}
 for checkpoint in checkpoints:
@@ -578,21 +586,17 @@ for checkpoint in checkpoints:
         labels,
         pad_token_label_id,
         smoothened=False,
-        mode="val",
+        mode=eval_data,
         prefix=checkpoint,
     )
     print('\n')
     results[checkpoint] = result
     preds[checkpoint] = pred
 
-output_eval_file = os.path.join(args.output_dir, "eval_results.json")
+output_eval_file = os.path.join(args.output_dir, eval_data + "_eval_results.json")
 with open(output_eval_file, "w", encoding='utf-8') as f:
     json.dump(results, f, ensure_ascii=False, indent=4)
 
-output_pred_file = os.path.join(args.output_dir, "eval_preds.json")
+output_pred_file = os.path.join(args.output_dir, eval_data + "_eval_preds.json")
 with open(output_pred_file, "w", encoding='utf-8') as f:
     json.dump(preds, f, ensure_ascii=False, indent=4)
-
-    # import pprint
-    #
-    # pprint.pprint(results)
