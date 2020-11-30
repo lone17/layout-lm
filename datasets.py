@@ -11,13 +11,15 @@ logger = logging.getLogger(__name__)
 
 class DatasetForTokenClassification(Dataset):
     def __init__(self, args, tokenizer, labels, pad_token_label_id, mode):
-
+        
+        model_name_or_path = args.bert_model if args.bert_only else args.layoutlm_model
+        
         # Load data features from cache or dataset file
         cached_features_file = os.path.join(
             args.data_dir,
             "cached_train_{}_{}_{}".format(
                 mode,
-                list(filter(None, args.model_name_or_path.split("/"))).pop(),
+                list(filter(None, model_name_or_path.split("/"))).pop(),
                 str(args.max_seq_length),
             ),
         )
@@ -383,11 +385,13 @@ def convert_examples_to_features(
 class DatasetForMaskedVisualLM:
 
     def __init__(self, args, tokenizer, mode, mlm_probability=0.15):
+        model_name_or_path = args.bert_model if args.bert_only else args.layoutlm_model
+        
         cached_features_file = os.path.join(
             args.data_dir,
             "mvlm_cached_train_{}_{}_{}".format(
                 mode,
-                list(filter(None, args.model_name_or_path.split("/"))).pop(),
+                list(filter(None, model_name_or_path.split("/"))).pop(),
                 str(args.max_seq_length),
             ),
         )

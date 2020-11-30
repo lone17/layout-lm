@@ -92,7 +92,7 @@ def get_latest_output(pred_dict):
 mode = 'val'
 input_data_box = 'data_toshiba/{}_box.txt'.format(mode)
 input_data_label = 'data_toshiba/{}.txt'.format(mode)
-pred_output = 'train_results.json'
+pred_output = 'eval_preds.json'
 
 output_path = 'visualize'
 font = ImageFont.truetype(
@@ -115,7 +115,7 @@ examples = read_examples_from_file(data_dir='data_toshiba',
 
 with open(pred_output, 'r') as fi:
     pred_dict = json.load(fi)
-    pred_dict = get_latest_output(pred_dict)['pred']
+    pred_dict = get_latest_output(pred_dict)
 assert len(examples) == len(pred_dict)
 
 # for i in range(len(examples)):

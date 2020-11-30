@@ -564,6 +564,7 @@ if args.eval_all_checkpoints:
     )  # Reduce logging
 
 results = {}
+preds = {}
 for checkpoint in checkpoints:
     if args.bert_only:
         model = BertForTokenClassification.from_pretrained(checkpoint)
@@ -581,16 +582,16 @@ for checkpoint in checkpoints:
         prefix=checkpoint,
     )
     print('\n')
-    results[checkpoint] = {
-        'result': result,
-        'pred': pred
-    }
-
-import json
+    results[checkpoint] = result
+    preds[checkpoint] = pred
 
 output_eval_file = os.path.join(args.output_dir, "eval_results.json")
 with open(output_eval_file, "w", encoding='utf-8') as f:
     json.dump(results, f, ensure_ascii=False, indent=4)
+
+output_pred_file = os.path.join(args.output_dir, "eval_preds.json")
+with open(output_pred_file, "w", encoding='utf-8') as f:
+    json.dump(preds, f, ensure_ascii=False, indent=4)
 
     # import pprint
     #

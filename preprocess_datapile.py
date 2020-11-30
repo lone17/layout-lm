@@ -40,7 +40,7 @@ def actual_bbox_string(box, width, length):
     )
 
 
-def process_label(label):
+def process_label_invoice_categorized(label):
     key_type = label['key_type']
     label = label['formal_key'].strip()
     
@@ -65,6 +65,17 @@ def process_label(label):
         return 'date'
     if label in ['item_name']:
         return 'description'
+    return label
+
+
+def process_label_invoice_full_class(label):
+    key_type = label['key_type']
+    label = label['formal_key'].strip()
+    
+    if key_type == 'key' or len(label) == 0:
+        return 'other'
+    if label in ['item_quantity', 'item_quatity']:
+        return 'item_quantity'
     return label
 
 
@@ -144,7 +155,7 @@ def convert_datapile_to_funsd(args):
             
             current_line['text'] = text
             current_line['box'] = [x1, y1, x2, y2]
-            current_line['label'] = process_label(line['region_attributes'])
+            current_line['label'] = process_label_invoice_full_class(line['region_attributes'])
             
             words = []
             start_x = x1
@@ -352,7 +363,7 @@ if __name__ == "__main__":
         "--data_dir", type=str, default=r"data_raw\invoice3\train"
     )
     parser.add_argument("--data_split", type=str, default="train")
-    parser.add_argument("--output_dir", type=str, default=r"data_processed\invoice3")
+    parser.add_argument("--output_dir", type=str, default=r"data_processed\invoice3_full_class")
     parser.add_argument("--model_name_or_path", type=str, default='cl-tohoku/bert-base-japanese')
     parser.add_argument("--max_len", type=int, default=510)
     parser.add_argument("--so_only", type=bool, default=False)
