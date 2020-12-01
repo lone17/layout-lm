@@ -481,8 +481,7 @@ elif args.retrain_layout_embedder:
         bert = BertModel.from_pretrained(args.bert_model)
         model.layoutlm.embeddings.word_embeddings = \
             copy.deepcopy(bert.embeddings.word_embeddings)
-        
-elif:
+else:
     # Case 5: Use full pretrain LayoutLM
     model = LayoutLMForTokenClassification.from_pretrained(args.layoutlm_model,
                                                            num_labels=num_labels,
