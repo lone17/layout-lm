@@ -324,15 +324,20 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
         logger.info('train: %s', train_results)
 
         if args.use_val:
-            val_results, _ = evaluate(
-                args,
-                model,
-                tokenizer,
-                labels,
-                pad_token_label_id,
-                mode="val",
-                verbose=False
-            )
+            if args.use_val:
+                if os.path.exists(os.path.join(args.data_dir, 'val.txt')):
+                    eval_data = 'val'
+                else:
+                    eval_data = 'test'
+                val_results, _ = evaluate(
+                    args,
+                    model,
+                    tokenizer,
+                    labels,
+                    pad_token_label_id,
+                    mode=eval_data,
+                    verbose=False
+                )
             logger.info('val: %s', val_results)
             for key, value in val_results.items():
                 summary_writer.add_scalar(
