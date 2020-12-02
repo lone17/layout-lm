@@ -128,10 +128,12 @@ if __name__ == "__main__":
     files = glob.glob(folder + '/*.json')
     pages_data = []
     print("write train data ...")
+
     for file in tqdm.tqdm(files[:200]):
         pages_data.extend(convert_data_to_layout_lm(file))
     write_data(pages_data, output_folder_train)
     print("write test data ...")
+    pages_data = []
     for file in tqdm.tqdm(files[200:250]):
         pages_data.extend(convert_data_to_layout_lm(file))
     write_data(pages_data, output_folder_test, mode='test')
