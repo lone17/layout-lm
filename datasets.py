@@ -336,24 +336,25 @@ def convert_examples_to_features(
         padding_length = max_seq_length - len(input_ids)
         if pad_on_left:
             input_ids = ([pad_token] * padding_length) + input_ids
-            attention_mask = (
-                                     [0 if mask_padding_with_zero else 1] * padding_length
-                             ) + attention_mask
+            attention_mask = ([0 if mask_padding_with_zero else 1] * padding_length) + attention_mask
             segment_ids = ([pad_token_segment_id] * padding_length) + segment_ids
             label_ids = ([pad_token_label_id] * padding_length) + label_ids
             token_boxes = ([pad_token_box] * padding_length) + token_boxes
+            actual_bboxes = ([pad_token_box] * padding_length) + actual_bboxes
         else:
             input_ids += [pad_token] * padding_length
             attention_mask += [0 if mask_padding_with_zero else 1] * padding_length
             segment_ids += [pad_token_segment_id] * padding_length
             label_ids += [pad_token_label_id] * padding_length
             token_boxes += [pad_token_box] * padding_length
+            actual_bboxes += [pad_token_box] * padding_length
 
         assert len(input_ids) == max_seq_length
         assert len(attention_mask) == max_seq_length
         assert len(segment_ids) == max_seq_length
         assert len(label_ids) == max_seq_length
         assert len(token_boxes) == max_seq_length
+        assert len(actual_bboxes) == max_seq_length
 
         if ex_index < 5:
             logger.info("*** Example ***")

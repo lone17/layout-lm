@@ -76,7 +76,85 @@ def process_label_invoice_full_class(label):
         return 'other'
     if label in ['item_quantity', 'item_quatity']:
         return 'item_quantity'
+    
     return label
+
+
+def convert_one_datapile_to_funsd(data, image, tokenizer):
+    width, height = image.size
+    
+    lines = []
+    for line in data['attributes']['_via_img_metadata']['regions']:
+        current_line = {}
+        text = line['region_attributes']['label'].strip()
+        if not text:
+            continue
+        
+        if line['shape_attributes']['name'] == 'rect':
+            x1 = line['shape_attributes']['x']
+            y1 = line['shape_attributes']['y']
+            line_width = line['shape_attributes']['width']
+            line_height = line['shape_attributes']['height']
+        elif line['shape_attributes']['name'] == 'polygon':
+            x1 = min(line['shape_attributes']['all_points_x'])
+            y1 = min(line['shape_attributes']['all_points_y'])
+            line_width = max(line['shape_attributes']['all_points_x']) - x1
+            line_height = max(line['shape_attributes']['all_points_y']) - y1
+        
+        if line_width < len(text):
+            continue
+            
+        
+        x1 = max(x1, 0)
+        y1 = max(y1, 0)
+        x2 = min(x1 + line_width, width)
+        y2 = min(y1 + line_height, height)
+        
+        # if x2 < x1 or y2 < y1:
+        #     from IPython import embed
+        #     embed()
+        
+        current_line['text'] = text
+        current_line['box'] = [x1, y1, x2, y2]
+        current_line['label'] = process_label_invoice_full_class(line['region_attributes'])
+        
+        words = []
+        start_x = x1
+        tokens = [tokenizer.unk_token] if text == 'NotValid' else tokenizer.tokenize(text)
+        token_width = int(line_width / len(tokens))
+        for w in tokens:
+            current_word = {}
+            
+            # if len(text) == 1:
+            #     token_width = round(1 / len(tokens) * line_width)
+            # elif w == tokenizer.unk_token:
+            #     token_width = round(1 / len(text) * line_width)
+            # else:
+            #     token_width = round(len(w.replace('##', '', 1)) / len(text) * line_width)
+            
+            start_x = min(start_x, x2)
+            end_x = min(x2, start_x + token_width - 1)
+            if start_x > end_x or y1 > y2:
+                print(line_width, tokenizer.tokenize(text))
+                print(token_width)
+                print('#' * 60, 'ERROR')
+                print(text, w, sep='|')
+                import IPython
+                IPython.embed()
+            current_word['text'] = w
+            current_word['box'] = [start_x, y1, end_x, y2]
+            # print([start_x, y1, end_x, y2])
+            start_x = end_x + 1
+            words.append(current_word)
+        # print('------')
+        
+        current_line['words'] = words
+        
+        lines.append(current_line)
+    
+    lines = sorted(lines, key=lambda x : (x['box'][1], x['box'][0]))
+    
+    return lines
 
 
 def convert_datapile_to_funsd(args):
@@ -102,89 +180,28 @@ def convert_datapile_to_funsd(args):
         if 'label' not in sample or 'image' not in sample:
             pprint(sample)
             continue
+        
+        label_path = sample['label']
         image_path = sample['image']
+        
         file_name = os.path.basename(image_path)
-        # if '00003_Mizuho' not in file_name:
+        # if '0785_070_16' not in file_name:
         #     continue
         print()
         print('-' * 100)
         print(file_name)
-        label_path = sample['label']
         
         current_item = {}
         current_item['image_path'] = image_path
         
         image = Image.open(image_path)
         image = image.convert('RGB')
-        width, height = image.size
         
         print(label_path)
         with open(label_path, 'r', encoding='utf8') as f:
             data = json.load(f)
         
-        lines = []
-        for line in data['attributes']['_via_img_metadata']['regions']:
-            current_line = {}
-            text = line['region_attributes']['label'].strip()
-            if not text:
-                continue
-            
-            if line['shape_attributes']['name'] == 'rect':
-                x1 = line['shape_attributes']['x']
-                y1 = line['shape_attributes']['y']
-                line_width = line['shape_attributes']['width']
-                line_height = line['shape_attributes']['height']
-            elif line['shape_attributes']['name'] == 'polygon':
-                x1 = min(line['shape_attributes']['all_points_x'])
-                y1 = min(line['shape_attributes']['all_points_y'])
-                line_width = max(line['shape_attributes']['all_points_x']) - x1
-                line_height = max(line['shape_attributes']['all_points_y']) - y1
-            
-            if line_width < len(text):
-                continue
-                
-            
-            x1 = max(x1, 0)
-            y1 = max(y1, 0)
-            x2 = min(x1 + line_width, width)
-            y2 = min(y1 + line_height, height)
-            
-            # if x2 < x1 or y2 < y1:
-            #     from IPython import embed
-            #     embed()
-            
-            current_line['text'] = text
-            current_line['box'] = [x1, y1, x2, y2]
-            current_line['label'] = process_label_invoice_full_class(line['region_attributes'])
-            
-            words = []
-            start_x = x1
-            for w in tokenizer.tokenize(text):
-                current_word = {}
-                word_width = int(len(w.replace('##', '', 1)) / len(text) * line_width)
-                start_x = min(start_x, x2)
-                end_x = min(x2, start_x + word_width - 1)
-                if start_x > end_x or y1 > y2:
-                    print(line_width, tokenizer.tokenize(text))
-                    print(word_width)
-                    print('#' * 60, 'ERROR')
-                    print(file_name, text, w, sep='|')
-                    import IPython
-                    IPython.embed()
-                current_word['text'] = w
-                current_word['box'] = [start_x, y1, end_x, y2]
-                # print([start_x, y1, end_x, y2])
-                start_x = end_x + 1
-                words.append(current_word)
-            # print('------')
-            
-            current_line['words'] = words
-            
-            lines.append(current_line)
-        
-        lines = sorted(lines, key=lambda x : (x['box'][1], x['box'][0]))
-        current_item['form'] = lines
-        
+        current_item['form'] = convert_one_datapile_to_funsd(data, image, tokenizer)
         annotations[file_name] = current_item
         
         # from pprint import pprint
@@ -221,6 +238,7 @@ def convert(annotations, agrs):
         e_tag = 'E-'
     
     fw, fbw, fiw = '', '', ''
+    err = {}
     for file_name, data in annotations.items():
         token_cnt = 0
         image_path = data['image_path']
@@ -243,6 +261,19 @@ def convert(annotations, agrs):
     
             if label == "other":
                 for w in words:
+                    if int(w['box'][0] / width * 1000) == int(w['box'][2] / width * 1000):
+                        if file_name in err:
+                            err[file_name].append({
+                                'line': item,
+                                'w': width,
+                                'h': length
+                            })
+                        else:
+                            err[file_name] = [{
+                                'line': item,
+                                'w': width,
+                                'h': length
+                            }]
                     fw += (w["text"] + "\tO\n")
                     fbw += (
                         w["text"]
@@ -330,6 +361,7 @@ def convert(annotations, agrs):
             fbw += ("\n")
             fiw += ("\n")
     
+    
     with open(os.path.join(args.output_dir, args.data_split + ".txt"), "w",
               encoding="utf8") as f:
         f.write(fw)
@@ -355,6 +387,8 @@ def convert(annotations, agrs):
         # embed()
         with open(os.path.join(args.output_dir, 'labels.txt'), 'w', encoding='utf8') as f:
             f.write('\n'.join(label_list))
+        
+    return err
 
 
 if __name__ == "__main__":
@@ -381,4 +415,4 @@ if __name__ == "__main__":
     
     annotations = convert_datapile_to_funsd(args)
     
-    convert(annotations, args)
+    err = convert(annotations, args)
