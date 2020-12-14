@@ -24,6 +24,7 @@ from transformers import (
 from datasets import InputExample, convert_examples_to_features
 from preprocess_datapile import(process_label_invoice_full_class,
                                 convert_one_datapile_to_funsd)
+from utils import sort_funsd_reading_order
 
 def get_labels(path):
     with open(path, "r") as f:
@@ -155,11 +156,13 @@ def visualize_label(args, image, annotation, fields):
         
         label = process_label_invoice_full_class(line['region_attributes'])
         
-        regions.append([x1, y1, x2, y2, label])
+        regions.append({'box': [x1, y1, x2, y2], 'label': label})
     
-    regions = sorted(regions, key=lambda x: (x[1], x[0]))
+    regions = sort_funsd_reading_order(regions)
     
-    for x1, y1, x2, y2, label in regions:
+    for r in regions:
+        x1, y1, x2, y2 = r['box']
+        label = r['label']
         if label != 'other':
             draw.text((x1, y1), label + ' ({:d})'.format(fields.index(label.upper())), 
                       fill='brown', font=font, thickness=1)
@@ -228,7 +231,7 @@ def predict_one_sample(args, image, annotation, labels, model, tokenizer):
     model.eval()
     for f in features:
         with torch.no_grad():
-            if args.bert_only:
+            if args.bert_model is not None:
                 inputs = {
                     "input_ids": torch.tensor([f.input_ids], dtype=torch.long).to(args.device),
                     "attention_mask": torch.tensor([f.attention_mask], dtype=torch.long).to(args.device),
@@ -285,7 +288,7 @@ def process_one_sample(args, image_path, label_path):
                                             model, tokenizer)
     
     image = visualize_label(args, image, annotation, fields)
-    image = visualize_prediction(args, image, predictions, boxes, fields)
+    # image = visualize_prediction(args, image, predictions, boxes, fields)
     
     return image
 
@@ -293,7 +296,7 @@ def process_one_sample(args, image_path, label_path):
 args = dict(
     data_dir='data_processed/sroie_multiline_SO_with_val',
     max_seq_length=512,
-    layoutlm_model='D:\Experiments\layout-lm\ep-191-val_loss-0.64-val_f1-0.81-train_loss-0.00-train_f1-1.00',
+    # layoutlm_model='D:\Experiments\layout-lm\ep-191-val_loss-0.64-val_f1-0.81-train_loss-0.00-train_f1-1.00',
     bert_model=None,
     model_type='layoutlm',
     train_batch_size=2,
@@ -301,7 +304,7 @@ args = dict(
     device='cuda',
     so_only=True,
     is_tokenized=False,
-    bert_only=False,
+    bert_only=True,
     retrain_word_embedder=False,
     retrain_layout_embedder=False,
     pad_token_label_id=nn.CrossEntropyLoss().ignore_index
@@ -309,7 +312,8 @@ args = dict(
 
 # For invoice
 args.update(dict(
-    data_dir='data_processed/invoice3_full_class',
+    bert_model='bert_only\ep-70-val_loss-0.61-val_f1-0.76-train_loss-0.00-train_f1-1.00',
+    data_dir='data_processed/invoice3_read_order_full_class',
     is_tokenized=True,
 ))
 

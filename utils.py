@@ -61,5 +61,71 @@ def convert_SO_to_BIOES(tags):
     return new_tags
 
 
+def bbox_string(box, width, length):
+    return (
+        str(int(1000 * (box[0] / width)))
+        + " "
+        + str(int(1000 * (box[1] / length)))
+        + " "
+        + str(int(1000 * (box[2] / width)))
+        + " "
+        + str(int(1000 * (box[3] / length)))
+    )
+
+
+def actual_bbox_string(box, width, length):
+    return (
+        str(box[0])
+        + " "
+        + str(box[1])
+        + " "
+        + str(box[2])
+        + " "
+        + str(box[3])
+        + "\t"
+        + str(width)
+        + " "
+        + str(length)
+    )
+
+
+def sort_funsd_reading_order(lines):
+    """ Sort cell list to create the right reading order using their locations
+    Parameters
+    ----------
+    lines: list of cells to sort
+    Returns
+    -------
+    a list of cell lists in the right reading order that contain no key or start with a key and contain no other key
+    """
+    sorted_list = []
+    
+    if len(lines) == 0:
+        return lines
+    
+    while len(lines) > 1:
+        topleft_line = lines[0]
+        for line in lines[1:]:
+            topleft_line_pos = topleft_line['box']
+            topleft_line_center_y = (topleft_line_pos[1] + 
+                                     topleft_line_pos[3]) / 2
+            x1, y1, x2, y2 = line['box']
+            box_center_x = (x1 + x2) / 2
+            box_center_y = (y1 + y2) / 2
+            cell_h = y2 - y1
+            if box_center_y <= topleft_line_center_y - cell_h / 2:
+                topleft_line = line
+                continue
+            if box_center_x < topleft_line_pos[2] and box_center_y < topleft_line_pos[3]:
+                topleft_line = line
+                continue
+        sorted_list.append(topleft_line)
+        lines.remove(topleft_line)
+    
+    sorted_list.append(lines[0])
+    
+    return sorted_list
+
+
 # print(convert_SO_to_BIOES(['O'] * 5 + ['S-x'] * 4 + ['O'] * 3 + ['S-y'] * 2 + ['O'] * 5 + ['S-z'] * 1
 #                           + ['S-t'] * 3 + ['S-u'] * 4 + ['O'] + ['S-w'] * 3))

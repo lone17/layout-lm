@@ -11,33 +11,7 @@ from pprint import pprint
 from transformers import AutoTokenizer
 from matplotlib import pyplot as plt
 
-
-def bbox_string(box, width, length):
-    return (
-        str(int(1000 * (box[0] / width)))
-        + " "
-        + str(int(1000 * (box[1] / length)))
-        + " "
-        + str(int(1000 * (box[2] / width)))
-        + " "
-        + str(int(1000 * (box[3] / length)))
-    )
-
-
-def actual_bbox_string(box, width, length):
-    return (
-        str(box[0])
-        + " "
-        + str(box[1])
-        + " "
-        + str(box[2])
-        + " "
-        + str(box[3])
-        + "\t"
-        + str(width)
-        + " "
-        + str(length)
-    )
+from utils import bbox_string, actual_bbox_string, sort_funsd_reading_order
 
 
 def process_label_invoice_categorized(label):
@@ -152,7 +126,8 @@ def convert_one_datapile_to_funsd(data, image, tokenizer):
         
         lines.append(current_line)
     
-    lines = sorted(lines, key=lambda x : (x['box'][1], x['box'][0]))
+    # lines = sorted(lines, key=lambda x : (x['box'][1], x['box'][0]))
+    lines = sort_funsd_reading_order(lines)
     
     return lines
 
@@ -394,10 +369,10 @@ def convert(annotations, agrs):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_dir", type=str, default=r"data_raw\invoice3\train"
+        "--data_dir", type=str, default=r"data_raw\invoice3\test"
     )
-    parser.add_argument("--data_split", type=str, default="train")
-    parser.add_argument("--output_dir", type=str, default=r"data_processed\invoice3_full_class")
+    parser.add_argument("--data_split", type=str, default="val")
+    parser.add_argument("--output_dir", type=str, default=r"data_processed\invoice3_read_order_full_class")
     parser.add_argument("--model_name_or_path", type=str, default='cl-tohoku/bert-base-japanese')
     parser.add_argument("--max_len", type=int, default=510)
     parser.add_argument("--so_only", type=bool, default=False)
