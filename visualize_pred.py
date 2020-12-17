@@ -51,6 +51,7 @@ def get_examples_from_one_sample(args, image, annotation, tokenizer):
         ]
     
     funsd_annotation = convert_one_datapile_to_funsd(annotation, image, tokenizer)
+    funsd_annotation = sort_funsd_reading_order(funsd_annotation)
     
     width, height = image.size
     
@@ -140,7 +141,6 @@ def visualize_label(args, image, annotation, fields):
     draw = ImageDraw.Draw(image)
     font = ImageFont.truetype("Arial.ttf", 15)
     
-    prev_pos = None
     regions = []
     for line in annotation['attributes']['_via_img_metadata']['regions']:
         if line['shape_attributes']['name'] == 'rect':
@@ -160,6 +160,7 @@ def visualize_label(args, image, annotation, fields):
     
     regions = sort_funsd_reading_order(regions)
     
+    prev_pos = None
     for r in regions:
         x1, y1, x2, y2 = r['box']
         label = r['label']
@@ -288,7 +289,7 @@ def process_one_sample(args, image_path, label_path):
                                             model, tokenizer)
     
     image = visualize_label(args, image, annotation, fields)
-    # image = visualize_prediction(args, image, predictions, boxes, fields)
+    image = visualize_prediction(args, image, predictions, boxes, fields)
     
     return image
 

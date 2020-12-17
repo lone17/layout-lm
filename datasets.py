@@ -257,8 +257,8 @@ def convert_examples_to_features(
         ):
             assert box[0] <= box[2]
             assert box[1] <= box[3]
-            assert box[0] < box[2]
-            assert box[1] < box[3]
+            # assert box[0] < box[2]
+            # assert box[1] < box[3]
             
             if is_tokenized:
                 word_tokens = [word]
