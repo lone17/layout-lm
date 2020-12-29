@@ -76,8 +76,8 @@ def evaluate(args, model, tokenizer, mode, prefix="", verbose=True):
         for p, l in zip(preds, labels):
             p = [p[i] for i, x in enumerate(l) if x != -100]
             l = [x for x in l if x != -100]
-            print(p)
-            print(l)
+            # print(p)
+            # print(l)
             eval_acc += np.mean(p == l)
         
     eval_loss = eval_loss / nb_eval_steps
@@ -271,9 +271,9 @@ def train(args, train_dataset, model, tokenizer):
 
 
 args = dict(
-    data_dir='sroie_multiline_SO_with_val', 
+    data_dir='data_processed/sroie_multiline_with_val', 
     max_seq_length=512, 
-    model_name_or_path='microsoft/layoutlm-base-uncased', 
+    layoutlm_model='microsoft/layoutlm-base-uncased', 
     model_type='layoutlm', 
     num_train_epochs=100, 
     learning_rate=5e-5,
@@ -289,14 +289,17 @@ args = dict(
     save_steps=-1, 
     logging_steps=1,
     max_grad_norm=1.0, 
-    device='cuda',
+    device='cpu',
     eval_all_checkpoints=True,
     use_val=True,
     load_pretrain=True,
     freeze_lm=False,
     so_only=True,
-    batch_size=8,
-    word_embedder='cl-tohoku/bert-base-japanese'
+    bert_model=None,
+    bert_only=False,
+    is_tokenized=False,
+    retrain_word_embedder=False,
+    retrain_layout_embedder=False,
 )
 class Args:
     def __init__(self, args):
@@ -315,92 +318,119 @@ logging.basicConfig(
 
 logger.addHandler(logging.StreamHandler())
 
-if if args.word_embedder is None::
-    tokenizer = LayoutLMTokenizer.from_pretrained(args.model_name_or_path,
+if args.bert_model is None:
+    tokenizer = LayoutLMTokenizer.from_pretrained(args.layoutlm_model,
                                                   do_lower_case=True)
 else:
-    tokenizer = AutoTokenizer.from_pretrained(args.word_embedder)
+    tokenizer = AutoTokenizer.from_pretrained(args.bert_model)
 
-if args.load_pretrain:
-    model = LayoutLMForMaskedLM.from_pretrained(args.model_name_or_path, 
-                                                return_dict=True)
-    if args.word_embedder is not None::
-        jp_bert = BertModel.from_pretrained(args.word_embedder)
-        model.config.vocab_size = tokenizer.vocab_size
-        model.layoutlm.embeddings.word_embeddings = copy.deepcopy(jp_bert.embeddings.word_embeddings)
-        del jp_bert
-    
-else:
-    config = LayoutLMConfig.from_pretrained(args.model_name_or_path, 
+if args.retrain_layout_embedder:
+    # Case 1: Train full LayoutLM from scratch
+    config = LayoutLMConfig.from_pretrained(args.layoutlm_model,
                                             return_dict=True)
-    if args.word_embedder is None::
-        config.vocab_size = tokenizer.vocab_size
+    if args.bert_model is not None:
+        config.vocab_size = tokenizer.vocab_size 
     model = LayoutLMForMaskedLM(config)
+    
+    # Case 2: Use pretrained word embeddings + train layout embeddings from scratch
+    if not args.retrain_word_embedder:
+        bert = BertModel.from_pretrained(args.bert_model)
+        model.layoutlm.embeddings.word_embeddings = \
+            copy.deepcopy(bert.embeddings.word_embeddings)
+else:
+    # Case 5: Use full pretrain LayoutLM
+    model = LayoutLMForMaskedLM.from_pretrained(args.layoutlm_model,
+                                                return_dict=True)
+    # Case 3: Train word embeddings from scratch + use pretrained layout embeddings
+    if args.retrain_word_embedder:
+        if args.bert_model is not None:
+            bert_config = AutoConfig.from_pretrained(args.bert_model)
+            bert = BertModel(bert_config)
+            model.config.vocab_size = tokenizer.vocab_size
+            model.layoutlm.embeddings.word_embeddings = \
+                copy.deepcopy(bert.embeddings.word_embeddings)
+            del bert
+        else:
+            config = LayoutLMConfig.from_pretrained(args.layoutlm_model,
+                                                    return_dict=True)
+            tmp_model = LayoutLMForMaskedLM(config)
+            tmp_model.layoutlm.embeddings.word_embeddings = \
+                copy.deepcopy(model.layoutlm.embeddings.word_embeddings)
+            model.layoutlm.embeddings = copy.deepcopy(tmp_mode.layoutlm.embeddings)
+            del tmp_model
+    # Case 4: Use pretrained layout embeddings + pretrained word embeddings
+    else:
+        if args.bert_model is not None:
+            bert = BertModel.from_pretrained(args.bert_model)
+            model.config.vocab_size = tokenizer.vocab_size
+            model.layoutlm.embeddings.word_embeddings = \
+                copy.deepcopy(bert.embeddings.word_embeddings)
+            del bert
 
-# model.to(args.device)
+model.to(args.device)
+
+if args.freeze_lm:
+    for param in model.base_model.parameters():
+        param.requires_grad = False
+
+logger.info("Training/evaluation parameters %s", args.__dict__)
+
+logger.info('Training...')
+
+train_dataset = DatasetForMaskedVisualLM(args, tokenizer, mode="train")
+
+# for e in range(3):
+#     for i in tqdm([train_dataset.next_batch() for i in range(train_dataset.num_batch)]):
+#         pass
+
+global_step, tr_loss = train(args, train_dataset, model, tokenizer)
 # 
-# if args.freeze_lm:
-#     for param in model.base_model.parameters():
-#         param.requires_grad = False
-# 
-# logger.info("Training/evaluation parameters %s", args.__dict__)
-# 
-# logger.info('Training...')
-# 
-# train_dataset = DatasetForMaskedVisualLM(args, tokenizer, mode="train", batch_size=args.train_batch_size)
-# 
-# # for e in range(3):
-# #     for i in tqdm([train_dataset.next_batch() for i in range(train_dataset.num_batch)]):
-# #         pass
-# 
-# global_step, tr_loss = train(args, train_dataset, model, tokenizer)
-# # 
-# # Create output directory if needed
-# if not os.path.exists(args.output_dir):
-#     os.makedirs(args.output_dir)
-# 
-# logger.info("Saving final model checkpoint to %s", args.output_dir)
-# # Save a trained model, configuration and tokenizer using `save_pretrained()`.
-# # They can then be reloaded using `from_pretrained()`
-# model.save_pretrained(args.output_dir)
-# tokenizer.save_pretrained(args.output_dir)
-# 
-# # Good practice: save your training arguments together with the trained model
-# torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
-# 
-# 
-# logger.info('Evaluating...')
-# 
-# checkpoints = [args.output_dir]
-# if args.eval_all_checkpoints:
-#     checkpoints = list(
-#         os.path.dirname(c)
-#         for c in sorted(
-#             glob.glob(args.output_dir + "/**/" + WEIGHTS_NAME, recursive=True)
-#         )
-#     )
-#     logging.getLogger("pytorch_transformers.modeling_utils").setLevel(
-#         logging.WARN
-#     )  # Reduce logging
-# 
-# results = {}
-# for checkpoint in checkpoints:
-#     model = LayoutLMForMaskedLM.from_pretrained(checkpoint)
-#     _ = model.to(args.device)
-#     result = evaluate(
-#         args,
-#         model,
-#         tokenizer,
-#         mode="val",
-#         prefix=checkpoint,
-#     )
-#     print('\n')
-#     results[checkpoint] = result
-# 
-# import json
-# output_eval_file = os.path.join(args.output_dir, "eval_results.json")
-# with open(output_eval_file, "w", encoding='utf-8') as f:
-#     json.dump(results, f, ensure_ascii=False, indent=4)
-# 
-# import pprint
-# pprint.pprint(results)
+# Create output directory if needed
+if not os.path.exists(args.output_dir):
+    os.makedirs(args.output_dir)
+
+logger.info("Saving final model checkpoint to %s", args.output_dir)
+# Save a trained model, configuration and tokenizer using `save_pretrained()`.
+# They can then be reloaded using `from_pretrained()`
+model.save_pretrained(args.output_dir)
+tokenizer.save_pretrained(args.output_dir)
+
+# Good practice: save your training arguments together with the trained model
+torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
+
+
+logger.info('Evaluating...')
+
+checkpoints = [args.output_dir]
+if args.eval_all_checkpoints:
+    checkpoints = list(
+        os.path.dirname(c)
+        for c in sorted(
+            glob.glob(args.output_dir + "/**/" + WEIGHTS_NAME, recursive=True)
+        )
+    )
+    logging.getLogger("pytorch_transformers.modeling_utils").setLevel(
+        logging.WARN
+    )  # Reduce logging
+
+results = {}
+for checkpoint in checkpoints:
+    model = LayoutLMForMaskedLM.from_pretrained(checkpoint)
+    _ = model.to(args.device)
+    result = evaluate(
+        args,
+        model,
+        tokenizer,
+        mode="val",
+        prefix=checkpoint,
+    )
+    print('\n')
+    results[checkpoint] = result
+
+import json
+output_eval_file = os.path.join(args.output_dir, "eval_results.json")
+with open(output_eval_file, "w", encoding='utf-8') as f:
+    json.dump(results, f, ensure_ascii=False, indent=4)
+
+import pprint
+pprint.pprint(results)
