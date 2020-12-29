@@ -423,6 +423,7 @@ class DatasetForMaskedVisualLM:
         self.num_batch = math.ceil(len(self.features) / self.batch_size)
 
         self.remaining_indices = [i for i in range(len(self.features))]
+        random.shuffle(self.remaining_indices)
 
     def __len__(self):
         return len(self.features)
@@ -430,14 +431,20 @@ class DatasetForMaskedVisualLM:
     def next_batch(self):
         if len(self.remaining_indices) == 0:
             self.remaining_indices = [i for i in range(len(self.features))]
+            random.shuffle(self.remaining_indices)
 
-        random_idx = random.randint(0, max(0, len(self.remaining_indices) - self.batch_size - 1))
-        chosen_indices = self.remaining_indices[random_idx: random_idx + self.batch_size]
-
-        batch = self._collate_batch([self.features[i] for i in chosen_indices])
-        batch = self.mask_tokens(batch)
-
-        del self.remaining_indices[random_idx: random_idx + self.batch_size]
+        # random_idx = random.randint(0, max(0, len(self.remaining_indices) - self.batch_size - 1))
+        # chosen_indices = self.remaining_indices[random_idx: random_idx + self.batch_size]
+        # 
+        # batch = self._collate_batch([self.features[i] for i in chosen_indices])
+        # batch = self.mask_tokens(batch)
+        # 
+        # del self.remaining_indices[random_idx: random_idx + self.batch_size]
+        
+        batch = self._collate_batch([self.features[i] 
+                                     for i in self.remaining_indices[:self.batch_size]])
+        self.remaining_indices = self.remaining_indices[self.batch_size:]
+        
 
         return batch
 
