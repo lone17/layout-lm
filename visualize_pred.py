@@ -1,10 +1,12 @@
 import os
 import json
+from pathlib import Path
 
 import cv2
 import torch
 import numpy as np
 from torch import nn
+from imutils import paths
 from PIL import Image, ImageDraw, ImageFont
 from transformers import (
     WEIGHTS_NAME,
@@ -51,7 +53,6 @@ def get_examples_from_one_sample(args, image, annotation, tokenizer):
         ]
     
     funsd_annotation = convert_one_datapile_to_funsd(annotation, image, tokenizer)
-    funsd_annotation = sort_funsd_reading_order(funsd_annotation)
     
     width, height = image.size
     
@@ -66,41 +67,13 @@ def get_examples_from_one_sample(args, image, annotation, tokenizer):
     for item in funsd_annotation:
         words, label = item["words"], item["label"]
         words = [w for w in words if w["text"].strip() != ""]
-        for w in words:
-            
-            if len(words) == 0:
-                continue
-            
-            current_len = len(words)
-            
-            if token_cnt + current_len > args.max_seq_length - 2:
-                examples.append(
-                    InputExample(
-                        guid="%s-%d".format('test', 1),
-                        words=tokens,
-                        labels=labels,
-                        boxes=boxes,
-                        actual_bboxes=actual_bboxes,
-                        file_name='test',
-                        page_size=[width, height],
-                    )
-                )
-                
-                token_cnt = 0
-                
-                tokens = []
-                boxes = []
-                actual_bboxes = []
-                labels = []
-            
-            tokens.append(w['text'])
-            labels.append("O")
-            actual_bboxes.append(w['box'])
-            boxes.append(normalize_box(w['box']))
-            
-            token_cnt += current_len
-            
-        if token_cnt > 0:
+        
+        if len(words) == 0:
+            continue
+        
+        current_len = len(words)
+        
+        if token_cnt + current_len > args.max_seq_length - 2:
             examples.append(
                 InputExample(
                     guid="%s-%d".format('test', 1),
@@ -112,6 +85,34 @@ def get_examples_from_one_sample(args, image, annotation, tokenizer):
                     page_size=[width, height],
                 )
             )
+            
+            token_cnt = 0
+            
+            tokens = []
+            boxes = []
+            actual_bboxes = []
+            labels = []
+        
+        for w in words:
+            tokens.append(w['text'])
+            labels.append("O")
+            actual_bboxes.append(w['box'])
+            boxes.append(normalize_box(w['box']))
+            
+        token_cnt += current_len
+            
+    if token_cnt > 0:
+        examples.append(
+            InputExample(
+                guid="%s-%d".format('test', 1),
+                words=tokens,
+                labels=labels,
+                boxes=boxes,
+                actual_bboxes=actual_bboxes,
+                file_name='test',
+                page_size=[width, height],
+            )
+        )
     
     
     features = convert_examples_to_features(
@@ -184,8 +185,8 @@ def visualize_prediction(args, image, predictions, boxes, fields):
     draw = ImageDraw.Draw(image)
     font = ImageFont.truetype("Arial.ttf", 15)
     
-    for i, f in enumerate(fields):
-        print(i, '-', f)
+    # for i, f in enumerate(fields):
+    #     print(i, '-', f)
     
     prev_pos = None
     prev_tag = ''
@@ -201,7 +202,7 @@ def visualize_prediction(args, image, predictions, boxes, fields):
             color = 'red'
             current_field = None
         elif p.startswith('S-'):
-            color = 'yellow'
+            color = 'magenta'
             current_field = None
         elif p == 'O':
             current_field = None
@@ -255,27 +256,50 @@ def predict_one_sample(args, image, annotation, labels, model, tokenizer):
             assert len(pred) == len(f.label_ids)
             assert len(pred) == len(f.actual_bboxes)
             
-            for i, label_id in enumerate(f.label_ids):
-                if label_id != args.pad_token_label_id:
-                    predictions.append(label_map[pred[i]])
-                    boxes.append(f.actual_bboxes[i])
+            try:
+                for i, label_id in enumerate(f.label_ids):
+                    if label_id != args.pad_token_label_id:
+                        predictions.append(label_map[pred[i]])
+                        boxes.append(f.actual_bboxes[i])
+            except:
+                from IPython import embed
+                embed()
     
     return predictions, boxes
 
 
-def process_one_sample(args, image_path, label_path):
+def process_one_sample(args, image_path, label_path, model, tokenizer, labels):
     image = Image.open(image_path)
     image = image.convert('RGB')
     
     with open(label_path, 'r', encoding='utf8') as f:
         annotation = json.load(f)
     
-    labels = get_labels(os.path.join(args.data_dir, 'labels.txt'))
     fields = sorted(list(set([p.split('-')[-1] for p in labels])))
     
+    predictions, boxes = predict_one_sample(args, image, annotation, labels, 
+                                            model, tokenizer)
+    
+    # image = visualize_label(args, image, annotation, fields)
+    image = visualize_prediction(args, image, predictions, boxes, fields)
+    
+    return image
+
+
+def process(args):
+    data_map = {}
+    for p in paths.list_images(args.raw_data_dir):
+        k = os.path.splitext(os.path.basename(p))[0]
+        data_map[k] = {'image': p}
+    
+    for p in paths.list_files(args.raw_data_dir, validExts=('.json')):
+        k = os.path.splitext(os.path.basename(p))[0]
+        if k in data_map:
+            data_map[k]['label'] = p
+    
     if args.bert_model is None:
-        tokenizer = LayoutLMTokenizer.from_pretrained(args.layoutlm_model,
-                                                      do_lower_case=True)
+        tokenizer = AutoTokenizer.from_pretrained(args.layoutlm_model,
+                                                  do_lower_case=True)
         model = LayoutLMForTokenClassification.from_pretrained(args.layoutlm_model,
                                                                return_dict=True)
     else:
@@ -285,17 +309,23 @@ def process_one_sample(args, image_path, label_path):
     
     model.to(args.device)
     
-    predictions, boxes = predict_one_sample(args, image, annotation, labels, 
-                                            model, tokenizer)
+    labels = get_labels(os.path.join(args.processed_data_dir, 'labels.txt'))
     
-    image = visualize_label(args, image, annotation, fields)
-    image = visualize_prediction(args, image, predictions, boxes, fields)
-    
-    return image
+    for k, v in data_map.items():
+        if 'image' not in v or 'label' not in v:
+            continue
+        
+        print(k)
+        
+        out_image = process_one_sample(args, v['image'], v['label'], model, tokenizer, labels)
+        
+        out_image.save(os.path.join(args.visualization_dir, k + '.png'))
+        break
 
 
 args = dict(
-    data_dir='data_processed/sroie_multiline_SO_with_val',
+    processed_data_dir='data_processed/sroie_multiline_SO_with_val',
+    visualization_dir=None,
     max_seq_length=512,
     # layoutlm_model='D:\Experiments\layout-lm\ep-191-val_loss-0.64-val_f1-0.81-train_loss-0.00-train_f1-1.00',
     bert_model=None,
@@ -313,8 +343,10 @@ args = dict(
 
 # For invoice
 args.update(dict(
-    bert_model='bert_only\ep-70-val_loss-0.61-val_f1-0.76-train_loss-0.00-train_f1-1.00',
-    data_dir='data_processed/invoice3_read_order_full_class',
+    layoutlm_model='experiments/invoice3/reading_order_full_class',
+    processed_data_dir=r'data_processed/invoice3_read_order_full_class',
+    raw_data_dir='data_raw/invoice3/test/test_338_files',
+    visualization_dir='experiments/invoice3/reading_order_full_class/ian_visualize',
     is_tokenized=True,
 ))
 
@@ -324,9 +356,30 @@ class Args:
 
 args = Args(args)
 
+if args.visualization_dir is None:
+    args.visualization_dir = os.path.join(args.layout_model if args.bert_model is not None else args.bert_model, 
+                                          'visualization')
 
-image_path = r'data_raw\invoice3\test\test_338_files\images\10_0.png'
-label_path = r'data_raw\invoice3\test\test_338_files\labels\10_0.json'
+Path(args.visualization_dir).mkdir(parents=True, exist_ok=True)
 
-image = process_one_sample(args, image_path, label_path)
-image.show()
+process(args)
+
+# image_path = r'data_raw\tmp\00047_CTC.png'
+# label_path = r'data_raw\tmp\00047_CTC.json'
+# 
+# if args.bert_model is None:
+#     tokenizer = AutoTokenizer.from_pretrained(args.layoutlm_model,
+#                                               do_lower_case=True)
+#     model = LayoutLMForTokenClassification.from_pretrained(args.layoutlm_model,
+#                                                            return_dict=True)
+# else:
+#     tokenizer = AutoTokenizer.from_pretrained(args.bert_model)
+#     model = BertForTokenClassification.from_pretrained(args.bert_model,
+#                                                        return_dict=True)
+# 
+# model.to(args.device)
+# 
+# labels = get_labels(os.path.join(args.processed_data_dir, 'labels.txt'))
+# 
+# image = process_one_sample(args, image_path, label_path, model, tokenizer, labels)
+# image.show()

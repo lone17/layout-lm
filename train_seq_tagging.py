@@ -45,6 +45,8 @@ from sklearn.metrics import (
 
 from datasets import DatasetForTokenClassification
 from utils import *
+from bi_rnn_crf import BiRnnCrf, CRFConfig
+from sadice import SelfAdjDiceLoss
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +61,8 @@ def get_labels(path):
 
 def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode,
              smoothened=False, prefix="", verbose=True):
-    eval_dataset = DatasetForTokenClassification(args, tokenizer, labels, pad_token_label_id, mode=mode)
+    eval_dataset = DatasetForTokenClassification(args, tokenizer, labels, 
+                                                 pad_token_label_id, mode=mode)
 
     eval_sampler = SequentialSampler(eval_dataset)
     eval_dataloader = DataLoader(
@@ -80,7 +83,15 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode,
     model.eval()
     for batch in tqdm(eval_dataloader, desc="Evaluating", disable=not verbose):
         with torch.no_grad():
-            if args.bert_only:
+            if args.train_rnn_crf:
+                input_ids = batch[0][:, 1:-1]
+                label_ids = batch[3][:, 1:-1]
+                label_ids[label_ids == pad_token_label_id] = 0
+                inputs = {
+                    "input_ids": input_ids.to(args.device),
+                    "labels": label_ids.to(args.device),
+                }
+            elif args.bert_only:
                 inputs = {
                     "input_ids": batch[0].to(args.device),
                     "attention_mask": batch[1].to(args.device),
@@ -97,15 +108,21 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode,
                 }
 
             outputs = model(**inputs)
-            tmp_eval_loss = outputs.loss
-            logits = outputs.logits
-
-            eval_loss += tmp_eval_loss.item()
-
+        
+        tmp_eval_loss = outputs.loss
+        eval_loss += tmp_eval_loss.item()
         nb_eval_steps += 1
+        
+        if args.train_rnn_crf:
+            p = outputs.preds
+        else:
+            logits = outputs.logits
+            p = logits.detach().cpu().numpy()
 
-        p = logits.detach().cpu().numpy()
         l = inputs['labels'].detach().cpu().numpy()
+        
+        if args.train_rnn_crf:
+            l[inputs['input_ids'].detach().cpu().numpy() == tokenizer.pad_token_id] = pad_token_label_id
 
         if preds is None:
             preds = p
@@ -115,7 +132,9 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode,
             out_label_ids = np.append(out_label_ids, l, axis=0)
 
     eval_loss = eval_loss / nb_eval_steps
-    preds = np.argmax(preds, axis=2)
+    
+    if not args.train_rnn_crf:
+        preds = np.argmax(preds, axis=2)
     if smoothened:
         preds = [smoothen(p) for p in preds]
 
@@ -123,13 +142,13 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode,
 
     out_label_list = [[] for _ in range(out_label_ids.shape[0])]
     preds_list = [[] for _ in range(out_label_ids.shape[0])]
-
+    
     for i in range(out_label_ids.shape[0]):
         for j in range(out_label_ids.shape[1]):
             if out_label_ids[i, j] != pad_token_label_id:
                 out_label_list[i].append(label_map[out_label_ids[i][j]])
                 preds_list[i].append(label_map[preds[i][j]])
-
+    
     flat_pred = [p for preds in preds_list for p in preds]
     flat_label = [p for labels_ in out_label_list for p in labels_]
     token_report = token_classification_report(flat_label, flat_pred)
@@ -254,7 +273,17 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
         for step, batch in enumerate(epoch_iterator):
             model.train()
 
-            if args.bert_only:
+            if args.train_rnn_crf:
+                input_ids = batch[0][:, 1:-1]
+                label_ids = batch[3][:, 1:-1]
+                label_ids[label_ids == pad_token_label_id] = 0
+                inputs = {
+                    "input_ids": input_ids.to(args.device),
+                    "labels": label_ids.to(args.device),
+                }
+                # from IPython import embed
+                # embed()
+            elif args.bert_only:
                 inputs = {
                     "input_ids": batch[0].to(args.device),
                     "attention_mask": batch[1].to(args.device),
@@ -271,7 +300,21 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
                 }
 
             outputs = model(**inputs)
-            loss = outputs.loss
+            
+            if args.loss_fct == 'cross_entropy' or args.loss_fct is None:
+                loss = outputs.loss
+            elif args.loss_fct == 'sadice':
+                loss_fct = SelfAdjDiceLoss(reduction="none")
+                targets = inputs['labels']
+                padding_mask = targets == pad_token_label_id
+                targets[padding_mask] = labels.index('O')
+                loss = loss_fct(outputs.logits.view(-1, model.num_labels), 
+                                targets.view(-1))
+                loss = loss.reshape(-1, inputs['input_ids'].size()[-1]).sum(-1)
+                loss = loss.true_divide((~padding_mask).sum(dim=-1, keepdim=True))
+                loss = loss.mean()
+            else:
+                raise Exception('Unsupported loss function:', args.loss_fct)
 
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
@@ -399,7 +442,7 @@ args = dict(
     layoutlm_model='microsoft/layoutlm-base-uncased',
     bert_model=None,
     model_type='layoutlm',
-    num_train_epochs=100,
+    num_train_epochs=1,
     learning_rate=5e-5,
     weight_decay=0.0,
     output_dir='experiments/sroie/multiline_SO_1/',
@@ -413,7 +456,7 @@ args = dict(
     save_steps=-1,
     logging_steps=1,
     max_grad_norm=1.0,
-    device='cuda',
+    device='cpu',
     eval_all_checkpoints=True,
     use_val=True,
     freeze_lm=False,
@@ -423,16 +466,20 @@ args = dict(
     is_tokenized=False,
     bert_only=False,
     retrain_word_embedder=False,
-    retrain_layout_embedder=False
+    retrain_layout_embedder=False,
+    train_rnn_crf=False,
+    rnn_crf_model=None,
+    loss_fct='sadice'
 )
 
-# For invoice
+# For jp
 args.update(dict(
-    data_dir='data_processed/invoice3',
-    output_dir='experiments/invoice3/bert_only/',
+    data_dir='data_processed/invoice3_read_order_full_class',
+    output_dir='experiments/invoice3/reading_order_full_class_1',
     so_only=False,
     bert_model='cl-tohoku/bert-base-japanese',
     is_tokenized=True,
+    # test_only=True
 ))
 
 
@@ -461,69 +508,100 @@ num_labels = len(labels)
 
 pad_token_label_id = nn.CrossEntropyLoss().ignore_index
 
-if args.bert_model is None:
-    tokenizer = LayoutLMTokenizer.from_pretrained(args.layoutlm_model,
+if args.test_only:
+    if args.layoutlm_model:
+        pretrained_model = args.layoutlm_model
+        model = LayoutLMForTokenClassification.from_pretrained(pretrained_model)
+    elif args.bert_model:
+        pretrained_model = args.bert_model
+        model = BertForTokenClassification.from_pretrained(pretrained_model)
+    if args.rnn_crf_model:
+        pretrained_model = args.rnn_crf_model
+        model = BiRnnCrf.from_pretrained(pretrained_model)
+    tokenizer = AutoTokenizer.from_pretrained(pretrained_model)
+else:
+    if args.bert_model is None:
+        tokenizer = AutoTokenizer.from_pretrained(args.layoutlm_model,
                                                   do_lower_case=True)
-else:
-    tokenizer = AutoTokenizer.from_pretrained(args.bert_model)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(args.bert_model)
 
-# Case 0: Using only Bert
-if args.bert_only:
-    model = BertForTokenClassification.from_pretrained(args.bert_model,
-                                                       num_labels=num_labels,
-                                                       return_dict=True)
-elif args.retrain_layout_embedder:
-    # Case 1: Train full LayoutLM from scratch
-    config = LayoutLMConfig.from_pretrained(args.layoutlm_model,
-                                            num_labels=num_labels,
-                                            return_dict=True)
-    if args.bert_model is not None:
-        config.vocab_size = tokenizer.vocab_size 
-    model = LayoutLMForTokenClassification(config)
-    
-    # Case 2: Use pretrained word embeddings + train layout embeddings from scratch
-    if not args.retrain_word_embedder:
-        bert = BertModel.from_pretrained(args.bert_model)
-        model.layoutlm.embeddings.word_embeddings = \
-            copy.deepcopy(bert.embeddings.word_embeddings)
-else:
-    # Case 5: Use full pretrain LayoutLM
-    model = LayoutLMForTokenClassification.from_pretrained(args.layoutlm_model,
+    # Using Bi-LSTM CRF model
+    if args.train_rnn_crf:
+        if not args.rnn_crf_model:
+            crf_config = {
+                'intermediate_size': 3072,
+                'hidden_size': 768,
+                'vocab_size': tokenizer.vocab_size,
+                'num_labels': num_labels,
+                'num_rnn_layers': 1,
+                'rnn_cell_type': 'lstm'
+            }
+            crf_config = CRFConfig(**crf_config, return_dict=True)
+            model = BiRnnCrf(crf_config)
+        else:
+            model = BiRnnCrf.from_pretrained(args.rnn_crf_model)
+    # Case 0: Using only Bert
+    elif args.bert_only:
+        model = BertForTokenClassification.from_pretrained(args.bert_model,
                                                            num_labels=num_labels,
                                                            return_dict=True)
-    # Case 3: Train word embeddings from scratch + use pretrained layout embeddings
-    if args.retrain_word_embedder:
+    elif args.retrain_layout_embedder:
+        # Case 1: Train full LayoutLM from scratch
+        config = LayoutLMConfig.from_pretrained(args.layoutlm_model,
+                                                num_labels=num_labels,
+                                                return_dict=True)
         if args.bert_model is not None:
-            bert_config = AutoConfig.from_pretrained(args.bert_model)
-            bert = BertModel(bert_config)
-            model.config.vocab_size = tokenizer.vocab_size
-            model.layoutlm.embeddings.word_embeddings = \
-                copy.deepcopy(bert.embeddings.word_embeddings)
-            del bert
-        else:
-            config = LayoutLMConfig.from_pretrained(args.layoutlm_model,
-                                                    num_labels=num_labels,
-                                                    return_dict=True)
-            tmp_model = LayoutLMForTokenClassification(config)
-            tmp_model.layoutlm.embeddings.word_embeddings = \
-                copy.deepcopy(model.layoutlm.embeddings.word_embeddings)
-            model.layoutlm.embeddings = copy.deepcopy(tmp_mode.layoutlm.embeddings)
-            del tmp_model
-    # Case 4: Use pretrained layout embeddings + pretrained word embeddings
-    else:
-        if args.bert_model is not None:
+            config.vocab_size = tokenizer.vocab_size 
+        model = LayoutLMForTokenClassification(config)
+        
+        # Case 2: Use pretrained word embeddings + train layout embeddings from scratch
+        if not args.retrain_word_embedder:
             bert = BertModel.from_pretrained(args.bert_model)
-            model.config.vocab_size = tokenizer.vocab_size
             model.layoutlm.embeddings.word_embeddings = \
                 copy.deepcopy(bert.embeddings.word_embeddings)
             del bert
+    else:
+        # Case 5: Use full pretrain LayoutLM
+        model = LayoutLMForTokenClassification.from_pretrained(args.layoutlm_model,
+                                                               num_labels=num_labels,
+                                                               return_dict=True)
+        # Case 3: Train word embeddings from scratch + use pretrained layout embeddings
+        if args.retrain_word_embedder:
+            if args.bert_model is not None:
+                bert_config = AutoConfig.from_pretrained(args.bert_model)
+                bert = BertModel(bert_config)
+                model.config.vocab_size = tokenizer.vocab_size
+                model.layoutlm.embeddings.word_embeddings = \
+                    copy.deepcopy(bert.embeddings.word_embeddings)
+                del bert
+            else:
+                config = LayoutLMConfig.from_pretrained(args.layoutlm_model,
+                                                        num_labels=num_labels,
+                                                        return_dict=True)
+                tmp_model = LayoutLMForTokenClassification(config)
+                tmp_model.layoutlm.embeddings.word_embeddings = \
+                    copy.deepcopy(model.layoutlm.embeddings.word_embeddings)
+                model.layoutlm.embeddings = copy.deepcopy(tmp_mode.layoutlm.embeddings)
+                del tmp_model
+        # Case 4: Use pretrained layout embeddings + pretrained word embeddings
+        else:
+            if args.bert_model is not None:
+                bert = BertModel.from_pretrained(args.bert_model)
+                model.config.vocab_size = tokenizer.vocab_size
+                model.layoutlm.embeddings.word_embeddings = \
+                    copy.deepcopy(bert.embeddings.word_embeddings)
+                del bert
 
-if args.att_on_cls:
-    self_att = nn.TransformerEncoder(nn.TransformerEncoderLayer(768, 8, 2048, 0.2), 2)
-    # # from custom_attention import CustomAttentionLayer
-    # # self_att = nn.TransformerEncoder(CustomAttentionLayer(768, 8, 2048, 0.0), 1)
-    fc = nn.Linear(768, num_labels)
-    model.classifier = nn.Sequential(self_att, fc)
+    if args.att_on_cls:
+        self_att = nn.TransformerEncoder(nn.TransformerEncoderLayer(768, 8, 2048, 0.2), 2)
+        # # from custom_attention import CustomAttentionLayer
+        # # self_att = nn.TransformerEncoder(CustomAttentionLayer(768, 8, 2048, 0.0), 1)
+        fc = nn.Linear(768, num_labels)
+        model.classifier = nn.Sequential(self_att, fc)
+
+# Ensure saving correct tokenizer
+model.config.tokenizer_class = type(tokenizer).__name__
 
 model.to(args.device)
 
@@ -536,9 +614,12 @@ if not args.test_only:
 
     logger.info('Training...')
 
-    train_dataset = DatasetForTokenClassification(args, tokenizer, labels, pad_token_label_id, mode="train")
+    train_dataset = DatasetForTokenClassification(args, tokenizer, labels, 
+                                                  pad_token_label_id, 
+                                                  mode="train")
 
-    global_step, tr_loss = train(args, train_dataset, model, tokenizer, labels, pad_token_label_id)
+    global_step, tr_loss = train(args, train_dataset, model, tokenizer, labels, 
+                                 pad_token_label_id)
 
     # Create output directory if needed
     if not os.path.exists(args.output_dir):
@@ -578,7 +659,9 @@ else:
 results = {}
 preds = {}
 for checkpoint in checkpoints:
-    if args.bert_only:
+    if args.train_rnn_crf:
+        model = BiRnnCrf.from_pretrained(checkpoint)
+    elif args.bert_only:
         model = BertForTokenClassification.from_pretrained(checkpoint)
     else:
         model = LayoutLMForTokenClassification.from_pretrained(checkpoint)
