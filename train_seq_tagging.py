@@ -469,7 +469,7 @@ args = dict(
     retrain_layout_embedder=False,
     train_rnn_crf=False,
     rnn_crf_model=None,
-    loss_fct='sadice'
+    loss_fct=None
 )
 
 # For jp
