@@ -24,7 +24,8 @@ from transformers import (
 )
 
 from datasets import InputExample, convert_examples_to_features
-from preprocess_datapile import(process_label_invoice_full_class,
+from preprocess_datapile import(preprocess_label_datapile,
+                                process_label_invoice_full_class,
                                 convert_one_datapile_to_funsd)
 from utils import sort_funsd_reading_order
 
@@ -155,7 +156,7 @@ def visualize_label(args, image, annotation, fields):
             x2 = max(line['shape_attributes']['all_points_x']) - x1
             y2 = max(line['shape_attributes']['all_points_y']) - y1
         
-        label = process_label_invoice_full_class(line['region_attributes'])
+        label = preprocess_label_datapile(line['region_attributes'])
         
         regions.append({'box': [x1, y1, x2, y2], 'label': label})
     
@@ -165,13 +166,15 @@ def visualize_label(args, image, annotation, fields):
     for r in regions:
         x1, y1, x2, y2 = r['box']
         label = r['label']
+        if label.upper() not in fields:
+            label = 'other'
         if label != 'other':
             draw.text((x1, y1), label + ' ({:d})'.format(fields.index(label.upper())), 
                       fill='brown', font=font, thickness=1)
         # draw_rectangle(draw, ((x1, y1), (x2, y2)), 'black', width=6)
         draw.line((x1, y1) + (x2, y1), fill='brown', width=3)
-        if prev_pos is not None:
-            draw.line(prev_pos + (x1, y1), fill='brown', width=1)
+        # if prev_pos is not None:
+        #     draw.line(prev_pos + (x1, y1), fill='brown', width=1)
         prev_pos = (x2, y1)
         # cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255 , 0), thickness=3)
         # if label != 'other':
@@ -280,10 +283,10 @@ def process_one_sample(args, image_path, label_path, model, tokenizer, labels):
     predictions, boxes = predict_one_sample(args, image, annotation, labels, 
                                             model, tokenizer)
     
-    # image = visualize_label(args, image, annotation, fields)
+    image = visualize_label(args, image, annotation, fields)
     image = visualize_prediction(args, image, predictions, boxes, fields)
     
-    return image
+    return image, predictions
 
 
 def process(args):
@@ -311,16 +314,22 @@ def process(args):
     
     labels = get_labels(os.path.join(args.processed_data_dir, 'labels.txt'))
     
+    pred_dict = {}
     for k, v in data_map.items():
         if 'image' not in v or 'label' not in v:
             continue
         
         print(k)
         
-        out_image = process_one_sample(args, v['image'], v['label'], model, tokenizer, labels)
+        out_image, preds = process_one_sample(args, v['image'], v['label'], model, tokenizer, labels)
         
         out_image.save(os.path.join(args.visualization_dir, k + '.png'))
-        break
+    
+        pred_dict[k] = preds
+    
+    with open(os.path.join(args.visualization_dir, 'preds.json'), 'w', 
+              encoding='utf-8') as f:
+        json.dump(pred_dict, f, indent=4, ensure_ascii=False)
 
 
 args = dict(
@@ -343,10 +352,10 @@ args = dict(
 
 # For invoice
 args.update(dict(
-    layoutlm_model='experiments/invoice3/reading_order_full_class',
-    processed_data_dir=r'data_processed/invoice3_read_order_full_class',
-    raw_data_dir='data_raw/invoice3/test/test_338_files',
-    visualization_dir='experiments/invoice3/reading_order_full_class/ian_visualize',
+    layoutlm_model=r'experiments\joil\ep-77-val_loss-0.52-val_f1-0.92-train_loss-0.00-train_f1-1.00',
+    processed_data_dir=r'data_processed/joil',
+    raw_data_dir='data_raw/joil/val/',
+    visualization_dir='experiments/joil/ian_visualize',
     is_tokenized=True,
 ))
 

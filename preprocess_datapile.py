@@ -13,6 +13,15 @@ from matplotlib import pyplot as plt
 
 from utils import bbox_string, actual_bbox_string, sort_funsd_reading_order
 
+def preprocess_label_datapile(label):
+    key_type = label['key_type']
+    label = label['formal_key'].strip()
+    
+    if len(label) != 0 and key_type in ['key', 'value']:
+        return key_type + '_' + label
+    
+    return 'other'
+
 
 def process_label_invoice_categorized(label):
     key_type = label['key_type']
@@ -369,10 +378,10 @@ def convert(annotations, agrs):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_dir", type=str, default=r"data_raw\invoice3\test"
+        "--data_dir", type=str, default=r"data_raw\tmp"
     )
-    parser.add_argument("--data_split", type=str, default="val")
-    parser.add_argument("--output_dir", type=str, default=r"data_processed\invoice3_read_order_full_class")
+    parser.add_argument("--data_split", type=str, default="train")
+    parser.add_argument("--output_dir", type=str, default=r"data_raw\tmp")
     parser.add_argument("--model_name_or_path", type=str, default='cl-tohoku/bert-base-japanese')
     parser.add_argument("--max_len", type=int, default=510)
     parser.add_argument("--so_only", type=bool, default=False)

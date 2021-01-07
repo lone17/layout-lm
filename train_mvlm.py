@@ -367,6 +367,9 @@ else:
                 copy.deepcopy(bert.embeddings.word_embeddings)
             del bert
 
+# Ensure saving correct tokenizer
+model.config.tokenizer_class = type(tokenizer).__name__
+
 model.to(args.device)
 
 if args.freeze_lm:
