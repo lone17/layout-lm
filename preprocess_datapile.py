@@ -99,7 +99,7 @@ def convert_one_datapile_to_funsd(data, image, tokenizer):
         
         current_line['text'] = text.replace('¥', '円')
         current_line['box'] = [x1, y1, x2, y2]
-        current_line['label'] = process_label_invoice_full_class(line['region_attributes'])
+        current_line['label'] = preprocess_label_datapile(line['region_attributes'])
         
         words = []
         start_x = x1
