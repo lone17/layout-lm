@@ -2,8 +2,8 @@ import os
 import glob
 import json
 import time
-import copy
 import logging
+import copy
 import datetime
 from pathlib import Path
 
@@ -17,12 +17,14 @@ from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from transformers import (
     WEIGHTS_NAME,
-    AutoTokenizer,
-    BertModel,
-    LayoutLMTokenizer, 
+    LayoutLMTokenizer,
     LayoutLMForMaskedLM,
-    LayoutLMModel, 
+    LayoutLMModel,
     LayoutLMConfig,
+    AutoTokenizer,
+    AutoConfig,
+    AutoModel,
+    BertModel,
     AdamW,
     get_linear_schedule_with_warmup
 )
@@ -35,21 +37,21 @@ logger = logging.getLogger(__name__)
 
 def evaluate(args, model, tokenizer, mode, prefix="", verbose=True):
     eval_dataset = DatasetForMaskedVisualLM(args, tokenizer, mode=mode)
-    
+
     # Eval!
     logger.info("***** Running evaluation - %s *****", prefix)
     logger.info("  Num examples = %d", len(eval_dataset))
     logger.info("  Batch size = %d", args.eval_batch_size)
-    
-    eval_loss = 0.0
+
+    # eval_loss = 0.0
+    eval_loss_list = []
     eval_acc = 0
     nb_eval_steps = 0
-    preds = None
-    out_label_ids = None
-    
+    # pred_output_report = []
+
     model.eval()
-    
-    for batch in tqdm([eval_dataset.next_batch() for _ in range(eval_dataset.num_batch)], 
+
+    for batch in tqdm([eval_dataset.next_batch() for _ in range(eval_dataset.num_batch)],
                       desc="Evaluating", disable=not verbose):
         with torch.no_grad():
             inputs = {
@@ -58,41 +60,61 @@ def evaluate(args, model, tokenizer, mode, prefix="", verbose=True):
                 'attention_mask': batch['attention_mask'].to(args.device),
                 'bbox': batch['boxes'].to(args.device)
             }
-            
+
+            # print(batch['input_ids'].shape)
+            decoded_text_input = [tokenizer.decode(item) for item in batch['input_ids']]
+            # print('\n'.join(decoded_text_input))
+            # bbox_input = batch['boxes']
+
+            # for text, bbox in zip(decoded_text_input, bbox_input):
+            #     pred_output_report.append((text, bbox))
+            #     print(text)
+
             outputs = model(**inputs)
             tmp_eval_loss = outputs.loss
             logits = outputs.logits
-            
-            eval_loss += tmp_eval_loss.item()
-        
+
+            # eval_loss += tmp_eval_loss.item()
+            eval_loss_list.append(tmp_eval_loss.item())
+
         nb_eval_steps += 1
-        
+
         preds = logits.detach().cpu().numpy()
         preds = np.argmax(preds, axis=-1)
         labels = inputs['labels'].detach().cpu().numpy()
-        
-        # from IPython import embed
-        # embed()
-        for p, l in zip(preds, labels):
-            p = [p[i] for i, x in enumerate(l) if x != -100]
-            l = [x for x in l if x != -100]
-            # print(p)
-            # print(l)
-            eval_acc += np.mean(p == l)
-        
-    eval_loss = eval_loss / nb_eval_steps
+
+        if verbose:
+            for p, l, inp in zip(preds, labels, decoded_text_input):
+                print('Input\n{}\n'.format(inp))
+                p = np.array([p[i] for i, x in enumerate(l) if x != -100])
+                l = np.array([x for x in l if x != -100])
+                print('Pred\n{}\n'.format(tokenizer.decode(p)))
+                print(p)
+                print('Label\n{}\n'.format(tokenizer.decode(l)))
+                print(l)
+                print('acc {:.2f}'.format(np.mean(p == l)))
+                eval_acc += np.mean(p == l) if len(p) > 0 else 0.0
+        else:
+            for p, l, inp in zip(preds, labels, decoded_text_input):
+                p = np.array([p[i] for i, x in enumerate(l) if x != -100])
+                l = np.array([x for x in l if x != -100])
+                eval_acc += np.mean(p == l) if len(p) > 0 else 0.0
+
+    # print(eval_loss_list)
+    eval_loss = np.average(eval_loss_list) if len(eval_loss_list) > 0 else 0.0  # eval_loss / nb_eval_steps
     eval_acc = eval_acc / len(eval_dataset)
-    
+
     results = {
         "loss": eval_loss,
         "acc": eval_acc,
+        "perplexity": np.exp(eval_loss)
     }
-    
+
     if verbose:
         logger.info("***** Eval results %s *****", prefix)
         for key in sorted(results.keys()):
             logger.info("  %s = %s", key, str(results[key]))
-        
+
     return results
 
 
@@ -147,30 +169,63 @@ def train(args, train_dataset, model, tokenizer):
 
     best_loss = 999
     best_f1 = 0
+
+    if args.use_val:
+        val_results = evaluate(
+            args,
+            model,
+            tokenizer,
+            mode="test",
+            verbose=False
+        )
+        logger.info('val: %s', val_results)
+        for key, value in val_results.items():
+            summary_writer.add_scalar(
+                "val_{}".format(key), value, global_step
+            )
+
+        if val_results['loss'] < best_loss:
+            best_loss = val_results['loss']
+            print('saving best loss', best_loss)
+            # Save model checkpoint
+            output_dir = os.path.join(
+                args.output_dir,
+                ''.join("""ep-{}-val_loss-{:.2f}
+                        """.split()).format(-1, val_results['loss'])
+            )
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
+            model.save_pretrained(output_dir)
+            tokenizer.save_pretrained(output_dir)
+            torch.save(args, os.path.join(output_dir, "training_args.bin"))
+
+            logger.info("Saving model checkpoint to %s", output_dir)
+
     for i in train_iterator:
         print()
         print('Epoch', i, '=' * 17)
-        epoch_iterator = tqdm([train_dataset.next_batch() for _ in range(train_dataset.num_batch)], 
+        epoch_iterator = tqdm([train_dataset.next_batch() for _ in range(train_dataset.num_batch)],
                               desc='Epochs {}'.format(i))
-        
+
         for step, batch in enumerate(epoch_iterator):
             model.train()
-            
+
             inputs = {
                 'input_ids': batch['input_ids'].to(args.device),
                 'labels': batch['label_ids'].to(args.device),
                 'attention_mask': batch['attention_mask'].to(args.device),
                 'bbox': batch['boxes'].to(args.device)
             }
-            
+
             outputs = model(**inputs)
             loss = outputs.loss
-            
+
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
-            
+
             loss.backward()
-            
+
             tr_loss += loss.item()
             if (step + 1) % args.gradient_accumulation_steps == 0:
                 nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
@@ -188,7 +243,7 @@ def train(args, train_dataset, model, tokenizer):
                         global_step,
                     )
                     logging_loss = tr_loss
-                
+
                 if args.save_steps > 0 and global_step % args.save_steps == 0:
                     # Save model checkpoint
                     output_dir = os.path.join(
@@ -200,12 +255,11 @@ def train(args, train_dataset, model, tokenizer):
                     tokenizer.save_pretrained(output_dir)
                     torch.save(args, os.path.join(output_dir, "training_args.bin"))
                     logger.info("Saving model checkpoint to %s", output_dir)
-            
+
             if args.max_steps > 0 and global_step > args.max_steps:
                 epoch_iterator.close()
                 break
-        
-        
+
         train_results = evaluate(
             args,
             model,
@@ -214,13 +268,13 @@ def train(args, train_dataset, model, tokenizer):
             verbose=False
         )
         logger.info('train: %s', train_results)
-        
-        if args.use_val:
+
+        if args.use_val and i % 5 == 0:
             val_results = evaluate(
                 args,
                 model,
                 tokenizer,
-                mode="val",
+                mode="test",
                 verbose=False
             )
             logger.info('val: %s', val_results)
@@ -228,13 +282,13 @@ def train(args, train_dataset, model, tokenizer):
                 summary_writer.add_scalar(
                     "val_{}".format(key), value, global_step
                 )
-        
+
             if val_results['loss'] < best_loss:
                 best_loss = val_results['loss']
                 print('saving best loss', best_loss)
                 # Save model checkpoint
                 output_dir = os.path.join(
-                    args.output_dir, 
+                    args.output_dir,
                     ''.join("""ep-{}-val_loss-{:.2f}-train_loss-{:.2f}
                             """.split()).format(i, val_results['loss'], train_results['loss'])
                 )
@@ -244,18 +298,18 @@ def train(args, train_dataset, model, tokenizer):
                 tokenizer.save_pretrained(output_dir)
                 torch.save(args, os.path.join(output_dir, "training_args.bin"))
                 logger.info("Saving model checkpoint to %s", output_dir)
-        
+
         print()
         if args.max_steps > 0 and global_step > args.max_steps:
             train_iterator.close()
             break
-    
+
     # print('saving final model')
     # # Save model checkpoint
     # output_dir = os.path.join(
-    #     args.output_dir, 
-    #     'ep-{}-train_loss-{:.2f}-train_f1-{:.2f}'.format(i, 
-    #                                                      train_results['loss'], 
+    #     args.output_dir,
+    #     'ep-{}-train_loss-{:.2f}-train_f1-{:.2f}'.format(i,
+    #                                                      train_results['loss'],
     #                                                      train_results['f1'])
     # )
     # if not os.path.exists(output_dir):
@@ -264,9 +318,9 @@ def train(args, train_dataset, model, tokenizer):
     # tokenizer.save_pretrained(output_dir)
     # torch.save(args, os.path.join(output_dir, "training_args.bin"))
     # logger.info("Saving model checkpoint to %s", output_dir)
-    
+
     summary_writer.close()
-    
+
     return global_step, tr_loss / global_step
 
 
@@ -318,89 +372,77 @@ logging.basicConfig(
 
 logger.addHandler(logging.StreamHandler())
 
-if args.bert_model is None:
-    tokenizer = LayoutLMTokenizer.from_pretrained(args.layoutlm_model,
-                                                  do_lower_case=True)
-else:
-    tokenizer = AutoTokenizer.from_pretrained(args.bert_model)
+if not args.test_only:
+    if args.load_pretrain:
+        model = LayoutLMForMaskedLM.from_pretrained(args.layoutlm_model,
+                                                    return_dict=True)
+        tokenizer = LayoutLMTokenizer.from_pretrained(args.layoutlm_model)
+        print('Loading pre-trained model from', args.layoutlm_model)
+    else:
+        config = LayoutLMConfig.from_pretrained(args.model_name_or_path,
+                                                return_dict=True)
+        if args.bert_model is not None:
+            tokenizer = AutoTokenizer.from_pretrained(args.bert_model)
+            config.vocab_size = tokenizer.vocab_size
 
-if args.retrain_layout_embedder:
-    # Case 1: Train full LayoutLM from scratch
-    config = LayoutLMConfig.from_pretrained(args.layoutlm_model,
-                                            return_dict=True)
-    if args.bert_model is not None:
-        config.vocab_size = tokenizer.vocab_size 
-    model = LayoutLMForMaskedLM(config)
-    
-    # Case 2: Use pretrained word embeddings + train layout embeddings from scratch
-    if not args.retrain_word_embedder:
+        model = LayoutLMForMaskedLM(config)
+
+    if args.bert_model is None:
+        tokenizer = LayoutLMTokenizer.from_pretrained(args.layoutlm_model,
+                                                      do_lower_case=True)
+    else:
         bert = BertModel.from_pretrained(args.bert_model)
         model.layoutlm.embeddings.word_embeddings = \
             copy.deepcopy(bert.embeddings.word_embeddings)
-else:
-    # Case 5: Use full pretrain LayoutLM
-    model = LayoutLMForMaskedLM.from_pretrained(args.layoutlm_model,
-                                                return_dict=True)
-    # Case 3: Train word embeddings from scratch + use pretrained layout embeddings
-    if args.retrain_word_embedder:
-        if args.bert_model is not None:
-            bert_config = AutoConfig.from_pretrained(args.bert_model)
-            bert = BertModel(bert_config)
-            model.config.vocab_size = tokenizer.vocab_size
-            model.layoutlm.embeddings.word_embeddings = \
-                copy.deepcopy(bert.embeddings.word_embeddings)
-            del bert
-        else:
-            config = LayoutLMConfig.from_pretrained(args.layoutlm_model,
-                                                    return_dict=True)
-            tmp_model = LayoutLMForMaskedLM(config)
-            tmp_model.layoutlm.embeddings.word_embeddings = \
-                copy.deepcopy(model.layoutlm.embeddings.word_embeddings)
-            model.layoutlm.embeddings = copy.deepcopy(tmp_mode.layoutlm.embeddings)
-            del tmp_model
-    # Case 4: Use pretrained layout embeddings + pretrained word embeddings
-    else:
-        if args.bert_model is not None:
-            bert = BertModel.from_pretrained(args.bert_model)
-            model.config.vocab_size = tokenizer.vocab_size
-            model.layoutlm.embeddings.word_embeddings = \
-                copy.deepcopy(bert.embeddings.word_embeddings)
-            del bert
+        del bert
 
-# Ensure saving correct tokenizer
-model.config.tokenizer_class = type(tokenizer).__name__
+    if args.layoutlm_model is not None and not args.load_pretrain:
+        layout_model = LayoutLMForMaskedLM.from_pretrained(args.layoutlm_model, return_dict=True)
 
-model.to(args.device)
+        model.layoutlm.embeddings.position_embeddings = \
+            copy.deepcopy(layout_model.layoutlm.embeddings.position_embeddings)
+        model.layoutlm.embeddings.x_position_embeddings = \
+            copy.deepcopy(layout_model.layoutlm.embeddings.x_position_embeddings)
+        model.layoutlm.embeddings.y_position_embeddings = \
+            copy.deepcopy(layout_model.layoutlm.embeddings.y_position_embeddings)
+        model.layoutlm.embeddings.h_position_embeddings = \
+            copy.deepcopy(layout_model.layoutlm.embeddings.h_position_embeddings)
+        model.layoutlm.embeddings.w_position_embeddings = \
+            copy.deepcopy(layout_model.layoutlm.embeddings.w_position_embeddings)
+        model.layoutlm.encoder = \
+            copy.deepcopy(layout_model.layoutlm.encoder)
+        model.layoutlm.pooler = \
+            copy.deepcopy(layout_model.layoutlm.pooler)
 
-if args.freeze_lm:
-    for param in model.base_model.parameters():
-        param.requires_grad = False
+    print(tokenizer)
+    print(model.config)
 
-logger.info("Training/evaluation parameters %s", args.__dict__)
+    model.to(args.device)
 
-logger.info('Training...')
+    if args.freeze_lm:
+        for param in model.layoutlm.parameters():
+            param.requires_grad = False
 
-train_dataset = DatasetForMaskedVisualLM(args, tokenizer, mode="train")
+    logger.info("Training/evaluation parameters %s", args.__dict__)
 
-# for e in range(3):
-#     for i in tqdm([train_dataset.next_batch() for i in range(train_dataset.num_batch)]):
-#         pass
+    logger.info('Training...')
 
-global_step, tr_loss = train(args, train_dataset, model, tokenizer)
-# 
-# Create output directory if needed
-if not os.path.exists(args.output_dir):
-    os.makedirs(args.output_dir)
+    train_dataset = DatasetForMaskedVisualLM(args, tokenizer, mode="train")
 
-logger.info("Saving final model checkpoint to %s", args.output_dir)
-# Save a trained model, configuration and tokenizer using `save_pretrained()`.
-# They can then be reloaded using `from_pretrained()`
-model.save_pretrained(args.output_dir)
-tokenizer.save_pretrained(args.output_dir)
+    global_step, tr_loss = train(args, train_dataset, model, tokenizer)
+    #
+    # Create output directory if needed
+    if not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir)
 
-# Good practice: save your training arguments together with the trained model
-torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
+    logger.info("Saving final model checkpoint to %s", args.output_dir)
+    # Save a trained model, configuration and tokenizer using `save_pretrained()`.
+    # They can then be reloaded using `from_pretrained()`
+    model.save_pretrained(args.output_dir)
+    tokenizer.save_pretrained(args.output_dir)
 
+    # Good practice: save your training arguments together with the trained model
+    torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
 
 logger.info('Evaluating...')
 
@@ -418,22 +460,37 @@ if args.eval_all_checkpoints:
 
 results = {}
 for checkpoint in checkpoints:
+    print(checkpoint)
     model = LayoutLMForMaskedLM.from_pretrained(checkpoint)
+    tokenizer = LayoutLMTokenizer.from_pretrained(checkpoint)
+
+    if args.bert_model is None:
+        tokenizer = LayoutLMTokenizer.from_pretrained(args.layoutlm_model,
+                                                      do_lower_case=True)
+    else:
+        bert = BertModel.from_pretrained(args.bert_model)
+        model.layoutlm.embeddings.word_embeddings = \
+            copy.deepcopy(bert.embeddings.word_embeddings)
+        del bert
+
     _ = model.to(args.device)
     result = evaluate(
         args,
         model,
         tokenizer,
-        mode="val",
+        mode="test",
         prefix=checkpoint,
     )
+
     print('\n')
     results[checkpoint] = result
 
 import json
+
 output_eval_file = os.path.join(args.output_dir, "eval_results.json")
 with open(output_eval_file, "w", encoding='utf-8') as f:
     json.dump(results, f, ensure_ascii=False, indent=4)
 
 import pprint
+
 pprint.pprint(results)

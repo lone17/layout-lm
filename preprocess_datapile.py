@@ -63,26 +63,40 @@ def process_label_invoice_full_class(label):
     return label
 
 
-def convert_one_datapile_to_funsd(data, image, tokenizer):
+def convert_one_datapile_to_funsd(data, image, tokenizer, datapile_format=True):
     width, height = image.size
     
     lines = []
-    for line in data['attributes']['_via_img_metadata']['regions']:
+    if datapile_format:
+        regions = data['attributes']['_via_img_metadata']['regions']
+    else:
+        regions = data
+
+    for line in regions:
         current_line = {}
-        text = line['region_attributes']['label'].strip()
-        if not text:
-            continue
-        
-        if line['shape_attributes']['name'] == 'rect':
-            x1 = line['shape_attributes']['x']
-            y1 = line['shape_attributes']['y']
-            line_width = line['shape_attributes']['width']
-            line_height = line['shape_attributes']['height']
-        elif line['shape_attributes']['name'] == 'polygon':
-            x1 = min(line['shape_attributes']['all_points_x'])
-            y1 = min(line['shape_attributes']['all_points_y'])
-            line_width = max(line['shape_attributes']['all_points_x']) - x1
-            line_height = max(line['shape_attributes']['all_points_y']) - y1
+
+        if datapile_format:
+            text = line['region_attributes']['label'].strip()
+            if not text:
+                continue
+
+            if line['shape_attributes']['name'] == 'rect':
+                x1 = line['shape_attributes']['x']
+                y1 = line['shape_attributes']['y']
+                line_width = line['shape_attributes']['width']
+                line_height = line['shape_attributes']['height']
+            elif line['shape_attributes']['name'] == 'polygon':
+                x1 = min(line['shape_attributes']['all_points_x'])
+                y1 = min(line['shape_attributes']['all_points_y'])
+                line_width = max(line['shape_attributes']['all_points_x']) - x1
+                line_height = max(line['shape_attributes']['all_points_y']) - y1
+        else:
+            text = line.get('text', '').strip()
+            if not text:
+                continue
+            x1, y1 = line['location'][0]
+            line_width, line_height = (line['location'][1][0] - line['location'][0][0]), (line['location'][2][1] - line['location'][0][1])
+            # print(text, x1, y1, line_width, line_height)
         
         if line_width < len(text):
             continue
@@ -174,10 +188,9 @@ def convert_datapile_to_funsd(args):
         print()
         print('-' * 100)
         print(file_name)
-        
-        current_item = {}
-        current_item['image_path'] = image_path
-        
+
+        current_item = {'image_path': image_path}
+
         image = Image.open(image_path)
         image = image.convert('RGB')
         

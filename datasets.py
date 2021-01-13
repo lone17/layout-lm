@@ -2,6 +2,7 @@ import os
 import math
 import random
 import logging
+from copy import deepcopy
 
 import torch
 from torch.utils.data import Dataset
@@ -10,9 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 class DatasetForTokenClassification(Dataset):
-    def __init__(self, args, tokenizer, labels, pad_token_label_id, mode):
+    def __init__(self, args, tokenizer, labels, pad_token_label_id, mode, augment=False):
         
         model_name_or_path = args.bert_model if args.bert_only else args.layoutlm_model
+        self.augment = augment
         
         # Load data features from cache or dataset file
         cached_features_file = os.path.join(
@@ -48,8 +50,7 @@ class DatasetForTokenClassification(Dataset):
                 pad_token_segment_id=4 if args.model_type in ["xlnet"] else 0,
                 pad_token_label_id=pad_token_label_id,
             )
-            # for example, feature in zip(examples, features):
-            #     print(len(example.words), len([id for id in feature.label_ids if id != -1 and id != pad_token_label_id]))
+
             logger.info("Saving features into cached file %s", cached_features_file)
             torch.save(features, cached_features_file)
 
@@ -72,13 +73,26 @@ class DatasetForTokenClassification(Dataset):
     def __len__(self):
         return len(self.features)
 
+    # randomly resize the bounding boxes
+    def _augment_boxes(self, boxes, stdev_x=0.1, stdev_y=0.05):
+        min_dim = torch.min(boxes[:, 2] - boxes[:, 0], boxes[:, 3] - boxes[:, 1]).unsqueeze(dim=-1)
+        offset_ratio = torch.normal(torch.zeros(boxes.shape), torch.tensor((stdev_x, stdev_y, stdev_x, stdev_y)))
+        new_boxes = boxes + torch.floor(min_dim * offset_ratio)
+        min_boxes = new_boxes.clone()
+        min_boxes[:, 2] = min_boxes[:, 0] + 1
+        min_boxes[:, 3] = min_boxes[:, 1] + 1
+        new_boxes = torch.clamp(torch.max(new_boxes, min_boxes), 0, 1000).long()
+
+        return new_boxes
+
+
     def __getitem__(self, index):
         return (
             self.all_input_ids[index],
             self.all_attention_mask[index],
             self.all_segment_ids[index],
             self.all_label_ids[index],
-            self.all_bboxes[index],
+            self.all_bboxes[index] if not self.augment else self._augment_boxes(self.all_bboxes[index]),
         )
 
 
@@ -257,8 +271,6 @@ def convert_examples_to_features(
         ):
             assert box[0] <= box[2]
             assert box[1] <= box[3]
-            # assert box[0] < box[2]
-            # assert box[1] < box[3]
             
             if is_tokenized:
                 word_tokens = [word]
@@ -386,11 +398,11 @@ def convert_examples_to_features(
 class DatasetForMaskedVisualLM:
 
     def __init__(self, args, tokenizer, mode, mlm_probability=0.15):
-        model_name_or_path = args.bert_model if args.bert_only else args.layoutlm_model
+        model_name_or_path = args.bert_model if args.bert_model else args.layoutlm_model
         
         cached_features_file = os.path.join(
             args.data_dir,
-            "mvlm_cached_train_{}_{}_{}".format(
+            "mvlm_cached_{}_{}_{}".format(
                 mode,
                 list(filter(None, model_name_or_path.split("/"))).pop(),
                 str(args.max_seq_length),
@@ -406,7 +418,7 @@ class DatasetForMaskedVisualLM:
         if mode == 'train':
             self.batch_size = args.train_batch_size
         else:
-            self.batch_size = args.val_batch_size
+            self.batch_size = args.eval_batch_size
 
         if os.path.exists(cached_features_file) and not args.overwrite_cache:
             logger.info("Loading features from cached file %s", cached_features_file)
@@ -433,19 +445,10 @@ class DatasetForMaskedVisualLM:
             self.remaining_indices = [i for i in range(len(self.features))]
             random.shuffle(self.remaining_indices)
 
-        # random_idx = random.randint(0, max(0, len(self.remaining_indices) - self.batch_size - 1))
-        # chosen_indices = self.remaining_indices[random_idx: random_idx + self.batch_size]
-        # 
-        # batch = self._collate_batch([self.features[i] for i in chosen_indices])
-        # batch = self.mask_tokens(batch)
-        # 
-        # del self.remaining_indices[random_idx: random_idx + self.batch_size]
-        
-        batch = self._collate_batch([self.features[i] 
+        batch = self._collate_batch([self.features[i]
                                      for i in self.remaining_indices[:self.batch_size]])
+        batch = self.mask_tokens(batch)
         self.remaining_indices = self.remaining_indices[self.batch_size:]
-        
-
         return batch
 
     def read_examples_from_file(self):
@@ -675,8 +678,6 @@ class DatasetForMaskedVisualLM:
 
         # We sample a few tokens in each sequence for MLM training (with probability `self.mlm_probability`)
         probability_matrix = torch.full(batch_shape, self.mlm_probability)
-
-        # print(batch)
         special_tokens_mask = batch['special_tokens_mask'].bool()
 
         probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
