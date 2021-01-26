@@ -486,7 +486,7 @@ class DatasetForMaskedVisualLM:
                 else:
                     bsplits = bline.split("\t")
                     isplits = iline.split("\t")
-                    if len(bsplits) == 1 and bsplits.endswith('\n'):
+                    if len(bsplits) == 1 and bsplits[0].endswith('\n'):
                         continue
                     assert len(bsplits) == 2
                     assert len(isplits) == 4
