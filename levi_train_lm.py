@@ -328,7 +328,7 @@ import os
 prj_path = os.path.abspath(__file__)[:-len("/levi_train_lm.py")]
 
 args = dict(
-    data_dir= prj_path + '/data',
+    data_dir= prj_path + '/data/train',
     max_seq_length=512,
     layoutlm_model='microsoft/layoutlm-base-uncased',
     model_type='layoutlm',
@@ -346,17 +346,18 @@ args = dict(
     save_steps=-1,
     logging_steps=1,
     max_grad_norm=1.0,
-    device='gpu',
+    device='cuda',
     eval_all_checkpoints=True,
     use_val=True,
     load_pretrain=True,
     freeze_lm=False,
     so_only=True,
-    bert_model=None,
+    bert_model='bert-base-multilingual-cased',
     bert_only=False,
     is_tokenized=False,
     retrain_word_embedder=False,
     retrain_layout_embedder=False,
+    test_only = False,
 )
 class Args:
     def __init__(self, args):
