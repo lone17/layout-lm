@@ -96,7 +96,9 @@ def write_data(pages_data, output_folder, mode='train'):
         words_page = [w for words in page['words'] for w in words]
         labels_page = [label for labels in page['labels'] for label in labels]
         for i in range(len(words_page)):
-            text = words_page[i]['text']
+            text = words_page[i]['text'].replace('\n', '')
+            if text == 'App\n':
+                1/0
             label = labels_page[i]
             x0 = words_page[i]['x0']
             x0_normalized = int(x0 / width * 1000)
@@ -131,20 +133,20 @@ if __name__ == "__main__":
 
     error_train = 0
     error_test = 0
-    for file in tqdm.tqdm(files[:int(0.9*len(files))]):
+    for file in tqdm.tqdm(files[:int(0.9 * len(files))]):
         try:
             pages_data.extend(convert_data_to_layout_lm(file))
         except:
-            error_train +=1
+            error_train += 1
     write_data(pages_data, output_folder_train)
     print(f"got {error_train} errors in train data")
     print("write test data ...")
     pages_data = []
-    for file in tqdm.tqdm(files[int(0.9*len(files)):]):
+    for file in tqdm.tqdm(files[int(0.9 * len(files)):]):
         try:
             pages_data.extend(convert_data_to_layout_lm(file))
         except:
-            error_test +=1
+            error_test += 1
     write_data(pages_data, output_folder_test, mode='test')
     print(f"got {error_test} errors in test data")
 

@@ -1,149 +1,68 @@
-{'words': [[{'x0': 254, 'y0': 76, 'x1': 341, 'y1': 99, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Curriculum',
-             'start_position': 0},
-            {'x0': 345, 'y0': 76, 'x1': 384, 'y1': 99, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Vitae',
-             'start_position': 11}], [
-               {'x0': 90, 'y0': 111, 'x1': 99, 'y1': 129, 'idx': -1, 'tag': None, 'type': 'box', 'text': '1.',
-                'start_position': 0},
-               {'x0': 102, 'y0': 111, 'x1': 151, 'y1': 129, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Personal',
-                'start_position': 3},
-               {'x0': 154, 'y0': 111, 'x1': 221, 'y1': 129, 'idx': -1, 'tag': None, 'type': 'box',
-                'text': 'information', 'start_position': 12}], [
-               {'x0': 127, 'y0': 139, 'x1': 131, 'y1': 157, 'idx': -1, 'tag': None, 'type': 'box', 'text': '-',
-                'start_position': 0},
-               {'x0': 134, 'y0': 139, 'x1': 155, 'y1': 157, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Full',
-                'start_position': 2},
-               {'x0': 158, 'y0': 139, 'x1': 190, 'y1': 157, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'name:',
-                'start_position': 7},
-               {'x0': 193, 'y0': 139, 'x1': 252, 'y1': 157, 'idx': -1, 'tag': None, 'type': 'box', 'text': '*********',
-                'start_position': 13},
-               {'x0': 255, 'y0': 139, 'x1': 289, 'y1': 157, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Tuong',
-                'start_position': 23}], [
-               {'x0': 127, 'y0': 168, 'x1': 131, 'y1': 185, 'idx': -1, 'tag': None, 'type': 'box', 'text': '-',
-                'start_position': 0},
-               {'x0': 134, 'y0': 168, 'x1': 159, 'y1': 185, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Date',
-                'start_position': 2},
-               {'x0': 162, 'y0': 168, 'x1': 173, 'y1': 185, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'of',
-                'start_position': 7},
-               {'x0': 176, 'y0': 168, 'x1': 204, 'y1': 185, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'birth:',
-                'start_position': 10},
-               {'x0': 207, 'y0': 168, 'x1': 231, 'y1': 185, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'May',
-                'start_position': 17},
-               {'x0': 235, 'y0': 166, 'x1': 257, 'y1': 178, 'idx': -1, 'tag': None, 'type': 'box', 'text': '08th,',
-                'start_position': 21},
-               {'x0': 261, 'y0': 168, 'x1': 287, 'y1': 185, 'idx': -1, 'tag': None, 'type': 'box', 'text': '1986',
-                'start_position': 27}], [
-               {'x0': 127, 'y0': 196, 'x1': 131, 'y1': 214, 'idx': -1, 'tag': None, 'type': 'box', 'text': '-',
-                'start_position': 0},
-               {'x0': 134, 'y0': 196, 'x1': 162, 'y1': 214, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Place',
-                'start_position': 2},
-               {'x0': 165, 'y0': 196, 'x1': 176, 'y1': 214, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'of',
-                'start_position': 8},
-               {'x0': 180, 'y0': 196, 'x1': 208, 'y1': 214, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'birth:',
-                'start_position': 11},
-               {'x0': 211, 'y0': 196, 'x1': 230, 'y1': 214, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Hai',
-                'start_position': 18},
-               {'x0': 233, 'y0': 196, 'x1': 330, 'y1': 214, 'idx': -1, 'tag': None, 'type': 'box',
-                'text': '*********rovince', 'start_position': 22}], [
-               {'x0': 127, 'y0': 225, 'x1': 131, 'y1': 242, 'idx': -1, 'tag': None, 'type': 'box', 'text': '-',
-                'start_position': 0},
-               {'x0': 134, 'y0': 225, 'x1': 172, 'y1': 242, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Marital',
-                'start_position': 2},
-               {'x0': 176, 'y0': 225, 'x1': 211, 'y1': 242, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Status:',
-                'start_position': 10},
-               {'x0': 214, 'y0': 225, 'x1': 247, 'y1': 242, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Single',
-                'start_position': 18}], [
-               {'x0': 128, 'y0': 253, 'x1': 133, 'y1': 270, 'idx': -1, 'tag': None, 'type': 'box', 'text': '-',
-                'start_position': 0},
-               {'x0': 136, 'y0': 253, 'x1': 182, 'y1': 270, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Address:',
-                'start_position': 2},
-               {'x0': 186, 'y0': 253, 'x1': 209, 'y1': 270, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Tien',
-                'start_position': 11},
-               {'x0': 213, 'y0': 253, 'x1': 234, 'y1': 270, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Tho',
-                'start_position': 16},
-               {'x0': 237, 'y0': 253, 'x1': 275, 'y1': 270, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Village',
-                'start_position': 20},
-               {'x0': 278, 'y0': 253, 'x1': 282, 'y1': 270, 'idx': -1, 'tag': None, 'type': 'box', 'text': ',',
-                'start_position': 28},
-               {'x0': 285, 'y0': 253, 'x1': 309, 'y1': 270, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Tien',
-                'start_position': 30},
-               {'x0': 312, 'y0': 253, 'x1': 341, 'y1': 270, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Dong',
-                'start_position': 35},
-               {'x0': 344, 'y0': 253, 'x1': 399, 'y1': 270, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'commune,',
-                'start_position': 40},
-               {'x0': 402, 'y0': 253, 'x1': 416, 'y1': 270, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Tu',
-                'start_position': 49},
-               {'x0': 420, 'y0': 253, 'x1': 436, 'y1': 270, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Ky',
-                'start_position': 52},
-               {'x0': 439, 'y0': 253, 'x1': 478, 'y1': 270, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'district,',
-                'start_position': 55}], [
-               {'x0': 165, 'y0': 271, 'x1': 183, 'y1': 288, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Hai',
-                'start_position': 0},
-               {'x0': 187, 'y0': 271, 'x1': 284, 'y1': 288, 'idx': -1, 'tag': None, 'type': 'box',
-                'text': '*********rovince', 'start_position': 4}], [
-               {'x0': 127, 'y0': 295, 'x1': 131, 'y1': 312, 'idx': -1, 'tag': None, 'type': 'box', 'text': '-',
-                'start_position': 0},
-               {'x0': 134, 'y0': 295, 'x1': 167, 'y1': 312, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Phone',
-                'start_position': 2},
-               {'x0': 170, 'y0': 295, 'x1': 218, 'y1': 312, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'numbers:',
-                'start_position': 8},
-               {'x0': 222, 'y0': 295, 'x1': 280, 'y1': 312, 'idx': -1, 'tag': None, 'type': 'box', 'text': '*********',
-                'start_position': 17}], [
-               {'x0': 127, 'y0': 323, 'x1': 131, 'y1': 341, 'idx': -1, 'tag': None, 'type': 'box', 'text': '-',
-                'start_position': 0},
-               {'x0': 134, 'y0': 323, 'x1': 165, 'y1': 341, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Email',
-                'start_position': 2},
-               {'x0': 168, 'y0': 323, 'x1': 215, 'y1': 341, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Address:',
-                'start_position': 8},
-               {'x0': 218, 'y0': 323, 'x1': 276, 'y1': 341, 'idx': -1, 'tag': None, 'type': 'box', 'text': '*********',
-                'start_position': 17}], [
-               {'x0': 90, 'y0': 352, 'x1': 99, 'y1': 370, 'idx': -1, 'tag': None, 'type': 'box', 'text': '2.',
-                'start_position': 0},
-               {'x0': 102, 'y0': 352, 'x1': 159, 'y1': 370, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Education',
-                'start_position': 3}], [
-               {'x0': 140, 'y0': 387, 'x1': 253, 'y1': 405, 'idx': -1, 'tag': None, 'type': 'box',
-                'text': 'OrdinalTime', 'start_position': 0}], [
-               {'x0': 316, 'y0': 389, 'x1': 362, 'y1': 404, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'School’s',
-                'start_position': 0},
-               {'x0': 365, 'y0': 389, 'x1': 398, 'y1': 404, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Name',
-                'start_position': 9}], [
-               {'x0': 460, 'y0': 387, 'x1': 502, 'y1': 405, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Faculty',
-                'start_position': 0}], [
-               {'x0': 159, 'y0': 422, 'x1': 305, 'y1': 439, 'idx': -1, 'tag': None, 'type': 'box',
-                'text': '12001-2004Cau', 'start_position': 0},
-               {'x0': 309, 'y0': 422, 'x1': 324, 'y1': 439, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Xe',
-                'start_position': 14},
-               {'x0': 330, 'y0': 422, 'x1': 353, 'y1': 439, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'high',
-                'start_position': 18},
-               {'x0': 357, 'y0': 422, 'x1': 391, 'y1': 439, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'school',
-                'start_position': 23}], [
-               {'x0': 440, 'y0': 422, 'x1': 466, 'y1': 439, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'pupil',
-                'start_position': 0}], [
-               {'x0': 159, 'y0': 457, 'x1': 327, 'y1': 473, 'idx': -1, 'tag': None, 'type': 'box',
-                'text': '202/2005–Military', 'start_position': 0},
-               {'x0': 330, 'y0': 457, 'x1': 369, 'y1': 474, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Service',
-                'start_position': 18}], [
-               {'x0': 203, 'y0': 479, 'x1': 246, 'y1': 496, 'idx': -1, 'tag': None, 'type': 'box', 'text': '03/2007',
-                'start_position': 0}], [
-               {'x0': 159, 'y0': 514, 'x1': 500, 'y1': 531, 'idx': -1, 'tag': None, 'type': 'box',
-                'text': '39/2007-*********UniversityofMechanical', 'start_position': 0}], [
-               {'x0': 203, 'y0': 536, 'x1': 347, 'y1': 554, 'idx': -1, 'tag': None, 'type': 'box',
-                'text': '6/20012Technology', 'start_position': 0}], [
-               {'x0': 440, 'y0': 536, 'x1': 503, 'y1': 554, 'idx': -1, 'tag': None, 'type': 'box',
-                'text': 'Engineering', 'start_position': 0}], [
-               {'x0': 90, 'y0': 629, 'x1': 99, 'y1': 647, 'idx': -1, 'tag': None, 'type': 'box', 'text': '3.',
-                'start_position': 0},
-               {'x0': 102, 'y0': 629, 'x1': 133, 'y1': 647, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Skills',
-                'start_position': 3}], [
-               {'x0': 122, 'y0': 664, 'x1': 166, 'y1': 682, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Ordinal',
-                'start_position': 0}], [
-               {'x0': 260, 'y0': 664, 'x1': 290, 'y1': 682, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Skills',
-                'start_position': 0}], [
-               {'x0': 458, 'y0': 664, 'x1': 488, 'y1': 682, 'idx': -1, 'tag': None, 'type': 'box', 'text': 'Level',
-                'start_position': 0}], [
-               {'x0': 316, 'y0': 740, 'x1': 322, 'y1': 756, 'idx': -1, 'tag': None, 'type': 'box', 'text': '1',
-                'start_position': 0}]],
- 'labels': [['O', 'O'], ['O', 'O', 'O'], ['O', 'O', 'O', 'O', 'O'], ['O', 'O', 'O', 'O', 'O', 'O', 'O'],
-            ['O', 'O', 'O', 'O', 'O', 'O'], ['O', 'O', 'O', 'O'],
-            ['O', 'O', 'O', 'O', 'O', 'O', 'O', 'O', 'O', 'O', 'O', 'O'], ['O', 'O'], ['O', 'O', 'O', 'O'],
-            ['O', 'O', 'O', 'O'], ['O', 'O'], ['O'], ['O', 'O'], ['O'], ['O', 'O', 'O', 'O'], ['O'], ['O', 'O'], ['O'],
-            ['O'], ['O'], ['O'], ['O', 'O'], ['O'], ['O'], ['O'], ['O']]}
+import os
+from datasets import InputExample
+
+def read_examples_from_file(data_dir, mode):
+    box_file_path = os.path.join(data_dir, "{}_box.txt".format(mode))
+    image_file_path = os.path.join(data_dir, "{}_image.txt".format(mode))
+    guid_index = 1
+    examples = []
+    with open(box_file_path, encoding="utf-8"
+              ) as fb, open(image_file_path, encoding="utf-8") as fi:
+        words = []
+        boxes = []
+        actual_bboxes = []
+        file_name = None
+        page_size = None
+        for bline, iline in zip(fb, fi):
+            if bline.startswith("-DOCSTART-") or bline == "" or bline == "\n":
+                if words:
+                    examples.append(
+                        InputExample(
+                            guid="{}-{}".format(mode, guid_index),
+                            words=words,
+                            labels='default',
+                            boxes=boxes,
+                            actual_bboxes=actual_bboxes,
+                            file_name=file_name,
+                            page_size=page_size,
+                        )
+                    )
+                    guid_index += 1
+                    words = []
+                    boxes = []
+                    actual_bboxes = []
+                    file_name = None
+                    page_size = None
+            else:
+                bsplits = bline.split("\t")
+                isplits = iline.split("\t")
+                if len(bsplits) == 1 and bsplits.endswith('\n'):
+                    continue
+                assert len(bsplits) == 2, f"{bsplits} - {isplits}"
+                assert len(isplits) == 4
+                assert bsplits[0] == isplits[0]
+                words.append(bsplits[0])
+                box = bsplits[-1].replace("\n", "")
+                box = [int(b) for b in box.split()]
+                boxes.append(box)
+                actual_bbox = [int(b) for b in isplits[1].split()]
+                actual_bboxes.append(actual_bbox)
+                page_size = [int(i) for i in isplits[2].split()]
+                file_name = isplits[3].strip()
+        if words:
+            examples.append(
+                InputExample(
+                    guid="%s-%d".format(mode, guid_index),
+                    words=words,
+                    boxes=boxes,
+                    actual_bboxes=actual_bboxes,
+                    file_name=file_name,
+                    page_size=page_size,
+                )
+            )
+
+    return examples
+
+if __name__ == '__main__':
+    folder  = 'D:\\layout-lm\\data\\train'
+    read_examples_from_file(folder, 'train')
