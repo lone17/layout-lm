@@ -20,18 +20,18 @@ def read_data_from_pdf_to_json(pdf_folder, output_folder):
     number_error = 0
     errors = []
     files = glob.glob(pdf_folder + '/*.pdf')
-    for file in files:
-        # try:
-        file_name = re.split(r'\\|\/', file)[-1]
-        print("Read file: ", file)
-        data = FileReader(file)
-        with open(output_folder + '/' + file_name + '.json', 'w', encoding='utf-8') as f:
-            json_data = data.to_dict()
-            json.dump(json_data, f, ensure_ascii=False)
-    # except:
-    #     errors.append(file)
-    #     number_error += 1
 
+    for i, file in enumerate(files):
+        try:
+            file_name = re.split(r'\\|\/', file)[-1]
+            print(f"Read file {i}: {file}")
+            data = FileReader(file)
+            with open(output_folder + '/' + file_name + '.json', 'w', encoding='utf-8') as f:
+                json_data = data.to_dict()
+                json.dump(json_data, f, ensure_ascii=False)
+        except:
+            errors.append(file)
+    print(f"PROCESSED {len(files)} files with {len(errors)} ERRORS!")
     with open("number_erroro.txt", 'a') as f:
         f.write(pdf_folder + " error " + str(number_error) + '\n')
     with open("list_error.json", 'w', encoding='utf-8') as f:
@@ -117,25 +117,36 @@ def write_data(pages_data, output_folder, mode='train'):
 
 if __name__ == "__main__":
     # TODO: CONVERT PDF TO json
-    # read_data_from_pdf_to_json('D:\\layout-lm\\data\\all_exp',#Folder chứa file được dán nhãn
-    #                            'D:\\layout-lm\\data\\json_folder')#Folder đích chứa file json
+    # read_data_from_pdf_to_json('E:\\CV\\ihr_production',#Folder chứa file được dán nhãn
+    #                            'E:\\CV\\json_data')#Folder đích chứa file json
     # # TODO: convert from json folder to conll
     # convert_data_to_colln(data_folder='C:\\Users\Levi\Desktop\\test__',#Folder chứa file json
     #                       output_folder='C:\\Users\Levi\Desktop\\annotation_reader', mode='train')#Train, test, dev
-    folder = 'D:\\layout-lm\\data\\json_folder'
-    output_folder_train = 'D:\\layout-lm\\data\\data_folder/train'
-    output_folder_test = 'D:\\layout-lm\\data\\data_folder/test'
+    folder = 'E:\\CV\\json_data'
+    output_folder_train = 'D:\\layout-lm\\data/train'
+    output_folder_test = 'D:\\layout-lm\\data/test'
     files = glob.glob(folder + '/*.json')
     pages_data = []
     print("write train data ...")
 
-    for file in tqdm.tqdm(files[:200]):
-        pages_data.extend(convert_data_to_layout_lm(file))
+    error_train = 0
+    error_test = 0
+    for file in tqdm.tqdm(files[:int(0.9*len(files))]):
+        try:
+            pages_data.extend(convert_data_to_layout_lm(file))
+        except:
+            error_train +=1
     write_data(pages_data, output_folder_train)
+    print(f"got {error_train} errors in train data")
     print("write test data ...")
     pages_data = []
-    for file in tqdm.tqdm(files[200:250]):
-        pages_data.extend(convert_data_to_layout_lm(file))
+    for file in tqdm.tqdm(files[int(0.9*len(files)):]):
+        try:
+            pages_data.extend(convert_data_to_layout_lm(file))
+        except:
+            error_test +=1
     write_data(pages_data, output_folder_test, mode='test')
+    print(f"got {error_test} errors in test data")
+
     # file = 'C:\\Users\\cinnamon\\Desktop/multi-answer.pdf'
     # read_document(file)
